@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Pilcrow app icon">
+  <title>Pilcrow app icon</title>
+  <defs>
+    <linearGradient id="p" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E6ECF4"/></linearGradient>
+    <clipPath id="c"><rect x="16" y="16" width="224" height="224" rx="48"/></clipPath>
+  </defs>
+  <rect x="16" y="16" width="224" height="224" rx="48" fill="url(#p)"/>
+  <g clip-path="url(#c)" stroke="#9ED8F0" stroke-width="2"><path d="M16 70H240M16 106H240M16 142H240M16 178H240M16 214H240"/></g>
+  <rect x="16.5" y="16.5" width="223" height="223" rx="47.5" fill="none" stroke="#2B2420" stroke-opacity=".08"/>
+  <g transform="translate(41.6 41.6) scale(3.6)">
+    <path d="M19 6.5H39.5V41.5H34V12H29.5V41.5H24V27.5H19A10.5 10.5 0 0 1 19 6.5Z" fill="#2F7FC1"/>
+  </g>
+</svg>

@@ -1,0 +1,11 @@
+# cargo-mutants reads this automatically. Run through `make mutate`, which also enforces
+# the minimum score (cargo-mutants itself fails on any missed mutant and has no threshold).
+
+# xtask is repo tooling, not product code. main.rs is wiring only (env, bind, signals);
+# it has no unit tests by design and is exercised end to end by `make qa`. crates/desktop is
+# the Tauri shell: wiring only, no logic; logic it needs lives in a feature crate.
+exclude_globs = ["xtask/**", "crates/app/src/main.rs", "crates/desktop/**"]
+
+# Debug-level line tables only: mutants rebuild the tree once per mutant, so smaller
+# debug info is noticeably faster and does not change behavior.
+profile = "mutants"

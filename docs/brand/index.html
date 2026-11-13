@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brand concepts for the assistant</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alegreya:ital,wght@0,500;1,500&family=Alegreya+Sans:wght@400;500&family=Atkinson+Hyperlegible+Next:wght@400;600&family=Fredoka:wght@500;600&family=Hanken+Grotesk:wght@400;430;600&family=Lexend:wght@400&family=Libre+Caslon+Text:wght@400&family=Libre+Franklin:wght@400;500&family=Public+Sans:wght@400;600;700&family=Young+Serif&display=block" rel="stylesheet">
+<style>
+:root { --board:#E9EBEE; --card:#FFFFFF; --text:#1D2026; --muted:#5C6370; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--board); color:var(--text); font:15px/1.5 'Public Sans', system-ui, sans-serif; }
+header { max-width:1520px; margin:0 auto; padding:56px 40px 28px; display:grid; grid-template-columns:1fr 520px; gap:48px; align-items:end; }
+header h1 { font-size:44px; line-height:1.1; margin:0 0 14px; font-weight:700; letter-spacing:-.01em; }
+header p { margin:0; max-width:64ch; color:var(--muted); font-size:16px; }
+header .verdict { background:var(--card); border-radius:14px; padding:20px 24px; font-size:15px; color:var(--text); }
+header .verdict strong { font-size:17px; }
+main { max-width:1520px; margin:0 auto; padding:0 40px 56px; display:grid; gap:20px; }
+.concept { background:var(--card); border-radius:20px; padding:24px; display:grid; grid-template-columns:300px 232px 232px 200px 1fr; grid-template-rows:auto auto; gap:14px; }
+.id { background:var(--tint); color:var(--ink); border-radius:14px; padding:22px 22px 18px; font-family:var(--ui); }
+.id .lockup { display:block; height:46px; width:auto; margin-bottom:16px; }
+.say { font-family:var(--disp); font-size:22px; margin:0 0 10px; line-height:1.2; }
+.say span { display:block; font-family:'Public Sans', sans-serif; font-size:13px; opacity:.75; margin-top:4px; }
+.line { margin:0 0 10px; font-size:15px; line-height:1.45; }
+.pers { margin:0; font-size:14px; opacity:.85; }
+.rec { font-style:normal; font-weight:600; font-family:'Public Sans', sans-serif; font-size:12.5px; background:var(--ink); color:var(--tint); padding:2px 9px; border-radius:99px; margin-left:8px; white-space:nowrap; }
+.rec.ru { background:transparent; color:var(--ink); box-shadow:inset 0 0 0 1.5px var(--ink); }
+.tile { border-radius:14px; padding:18px; display:flex; flex-direction:column; justify-content:space-between; gap:14px; min-height:228px; }
+.tile.light { background:#F3F3F3; }
+.tile.dark { background:#202020; }
+.sizes { display:flex; align-items:flex-end; gap:12px; }
+.sizes img:first-child { width:84px; height:84px; }
+.tile.light > img, .tile.dark > img { align-self:flex-start; height:34px; width:auto; }
+.tile.icon { background:linear-gradient(160deg,#DCE3EA,#C9D3DD); align-items:flex-start; justify-content:flex-start; gap:10px; }
+.tile.icon .small { display:flex; gap:10px; align-items:flex-end; }
+.bar { width:100%; height:30px; border-radius:6px; display:flex; align-items:center; gap:10px; padding:0 10px; font:12px 'Public Sans', sans-serif; }
+.bar i { width:12px; height:10px; border-radius:2px; background:currentColor; opacity:.35; }
+.bar span { margin-left:auto; }
+.bar.lt { background:#EEEEEE; color:#1B1B1B; }
+.bar.dk { background:#1C1C1C; color:#F2F2F2; margin-top:-4px; }
+.tile.states { background:#202020; flex-direction:row; flex-wrap:wrap; justify-content:space-between; align-content:center; gap:4px 0; }
+.st { margin:0; width:25%; display:flex; flex-direction:column; align-items:center; }
+.st figcaption { color:#C9CDD3; font-size:12.5px; margin-top:2px; }
+.foot { grid-column:1 / -1; display:grid; grid-template-columns:600px 1fr 1fr; gap:24px; align-items:center; padding:8px 4px 0; }
+.pal { list-style:none; margin:0; padding:0; display:flex; gap:10px; }
+.pal li { width:90px; font-size:12.5px; line-height:1.3; }
+.pal b { display:block; font-weight:600; margin-top:6px; }
+.pal span:not(.chip) { color:var(--muted); }
+.chip { display:block; height:44px; border-radius:8px; box-shadow:inset 0 0 0 1px rgba(0,0,0,.08); }
+.type { color:var(--ink); }
+.type p { margin:0; }
+.type .disp { font-family:var(--disp); font-size:30px; line-height:1.1; }
+#samara .type .disp { font-style:italic; }
+.type .ui { font-family:var(--ui); font-size:15px; margin:4px 0 2px; }
+.type small { color:var(--muted); font-size:12.5px; }
+.voice { margin:0; font-family:var(--ui); font-size:17px; line-height:1.4; color:var(--ink); border-left:3px solid var(--ink); padding-left:16px; }
+footer { max-width:1520px; margin:0 auto; padding:0 40px 48px; color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Five names for the assistant</h1>
+    <p>A free, local-first voice assistant for Windows. Each concept is a name you say out loud, a mark that sits in the bottom-right corner and reacts while you speak, an app icon, and a 16&nbsp;px tray icon. Marks are shown on Windows 11 light (#F3F3F3) and dark (#202020) surfaces at real size.</p>
+  </div>
+  <div class="verdict"><strong>Recommendation: Lampion.</strong> The clearest mark at 16&nbsp;px, the most natural voice-reactive motion (a light that brightens when you speak), and a story that is the product: a small light of your own, kept at home. Runner-up: Avocet, which has the lowest name risk and a sharp triage story. Full reasoning is in README.md.</div>
+</header>
+<main>
+<section class="concept" id="lampion" style="--tint:#FFF6DD;--ink:#1F2347;--disp:'Young Serif', serif;--ui:'Atkinson Hyperlegible Next', sans-serif">
+  <div class="id">
+    <img class="lockup" src="lampion/lockup.svg" alt="Lampion lockup" height="56">
+    <p class="say">“Hey Lampion”<span>LAM-pee-on /ˈlæm.pi.ən/</span></p>
+    <p class="line">A paper lantern you carry at dusk. A small light that stays beside you, lit by your own machine.</p>
+    <p class="pers">Warm, gentle, unhurried <em class="rec">Recommended</em></p>
+  </div>
+  <div class="tile light">
+    <div class="sizes"><img src="lampion/mark.svg" width="96" height="96" alt="Lampion mark"><img src="lampion/mark.svg" width="48" height="48" alt=""><img src="lampion/mark.svg" width="24" height="24" alt=""><img src="lampion/mark.svg" width="16" height="16" alt=""></div>
+    <img src="lampion/lockup.svg" height="36" alt="">
+  </div>
+  <div class="tile dark">
+    <div class="sizes"><img src="lampion/mark.svg" width="96" height="96" alt=""><img src="lampion/mark.svg" width="48" height="48" alt=""><img src="lampion/mark.svg" width="24" height="24" alt=""><img src="lampion/mark.svg" width="16" height="16" alt=""></div>
+    <img src="lampion/lockup-dark.svg" height="36" alt="">
+  </div>
+  <div class="tile icon">
+    <img src="lampion/app-icon.svg" width="112" height="112" alt="Lampion app icon">
+    <div class="small"><img src="lampion/app-icon.svg" width="48" height="48" alt=""><img src="lampion/app-icon.svg" width="32" height="32" alt=""><img src="lampion/app-icon.svg" width="24" height="24" alt=""></div>
+    <div class="bar lt"><img src="lampion/tray-16.svg" width="16" height="16" alt="Lampion tray icon"><i></i><i></i><span>9:41</span></div>
+    <div class="bar dk"><img src="lampion/tray-16.svg" width="16" height="16" alt=""><i></i><i></i><span>9:41</span></div>
+  </div>
+  <div class="tile states"><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true">
+  <path d="M24 1.5V7" stroke="#D9820B" stroke-width="2.5" stroke-linecap="round"/>
+  <rect x="16.5" y="6.75" width="15" height="5.5" rx="1.75" fill="#D9820B" stroke="#1F2347" stroke-width="2"/>
+  <rect x="18.5" y="37.75" width="11" height="5.5" rx="1.75" fill="#D9820B" stroke="#1F2347" stroke-width="2"/>
+  <ellipse cx="24" cy="25" rx="18" ry="14" fill="#FFB81C" stroke="#1F2347" stroke-width="2.5"/>
+  <ellipse cx="24" cy="25.5" rx="8.5" ry="7" fill="#FFF1C7"/>
+  <path d="M8.5 19.25Q24 22 39.5 19.25M8.5 30.75Q24 33.5 39.5 30.75" fill="none" stroke="#C76E00" stroke-width="1.6" stroke-linecap="round" opacity=".8"/></svg><figcaption>idle</figcaption></figure><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true"><defs><radialGradient id="lg"><stop offset="0" stop-color="#FFB81C" stop-opacity=".55"/><stop offset="1" stop-color="#FFB81C" stop-opacity="0"/></radialGradient></defs><circle cx="24" cy="25" r="30" fill="url(#lg)"/>
+  <path d="M24 1.5V7" stroke="#D9820B" stroke-width="2.5" stroke-linecap="round"/>
+  <rect x="16.5" y="6.75" width="15" height="5.5" rx="1.75" fill="#D9820B" stroke="#1F2347" stroke-width="2"/>
+  <rect x="18.5" y="37.75" width="11" height="5.5" rx="1.75" fill="#D9820B" stroke="#1F2347" stroke-width="2"/>
+  <ellipse cx="24" cy="25" rx="18" ry="14" fill="#FFB81C" stroke="#1F2347" stroke-width="2.5"/>
+  <ellipse cx="24" cy="25.5" rx="8.5" ry="7" fill="#FFF1C7"/>
+  <path d="M8.5 19.25Q24 22 39.5 19.25M8.5 30.75Q24 33.5 39.5 30.75" fill="none" stroke="#C76E00" stroke-width="1.6" stroke-linecap="round" opacity=".8"/><ellipse cx="24" cy="25.5" rx="11.5" ry="9.5" fill="#FFF8E4"/></svg><figcaption>listening</figcaption></figure><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true"><g transform="rotate(10 24 1.5)">
+  <path d="M24 1.5V7" stroke="#D9820B" stroke-width="2.5" stroke-linecap="round"/>
+  <rect x="16.5" y="6.75" width="15" height="5.5" rx="1.75" fill="#D9820B" stroke="#1F2347" stroke-width="2"/>
+  <rect x="18.5" y="37.75" width="11" height="5.5" rx="1.75" fill="#D9820B" stroke="#1F2347" stroke-width="2"/>
+  <ellipse cx="24" cy="25" rx="18" ry="14" fill="#FFB81C" stroke="#1F2347" stroke-width="2.5"/>
+  <ellipse cx="24" cy="25.5" rx="8.5" ry="7" fill="#FFF1C7"/>
+  <path d="M8.5 19.25Q24 22 39.5 19.25M8.5 30.75Q24 33.5 39.5 30.75" fill="none" stroke="#C76E00" stroke-width="1.6" stroke-linecap="round" opacity=".8"/></g></svg><figcaption>thinking</figcaption></figure><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true"><defs><radialGradient id="lg"><stop offset="0" stop-color="#FFB81C" stop-opacity=".55"/><stop offset="1" stop-color="#FFB81C" stop-opacity="0"/></radialGradient></defs><circle cx="24" cy="25" r="30" fill="url(#lg)"/>
+  <path d="M24 1.5V7" stroke="#D9820B" stroke-width="2.5" stroke-linecap="round"/>
+  <rect x="16.5" y="6.75" width="15" height="5.5" rx="1.75" fill="#D9820B" stroke="#1F2347" stroke-width="2"/>
+  <rect x="18.5" y="37.75" width="11" height="5.5" rx="1.75" fill="#D9820B" stroke="#1F2347" stroke-width="2"/>
+  <ellipse cx="24" cy="25" rx="18" ry="14" fill="#FFB81C" stroke="#1F2347" stroke-width="2.5"/>
+  <ellipse cx="24" cy="25.5" rx="8.5" ry="7" fill="#FFF1C7"/>
+  <path d="M8.5 19.25Q24 22 39.5 19.25M8.5 30.75Q24 33.5 39.5 30.75" fill="none" stroke="#C76E00" stroke-width="1.6" stroke-linecap="round" opacity=".8"/><g fill="none" stroke="#FFB81C"><ellipse cx="24" cy="25" rx="24" ry="20" stroke-opacity=".55" stroke-width="1.5"/><ellipse cx="24" cy="25" rx="29" ry="25" stroke-opacity=".25" stroke-width="1.5"/></g></svg><figcaption>speaking</figcaption></figure></div>
+  <div class="foot">
+    <ul class="pal"><li><span class="chip" style="background:#1F2347"></span><b>Dusk</b><span>#1F2347</span></li><li><span class="chip" style="background:#FFB81C"></span><b>Glow</b><span>#FFB81C</span></li><li><span class="chip" style="background:#D9820B"></span><b>Wick</b><span>#D9820B</span></li><li><span class="chip" style="background:#FFF1C7"></span><b>Paper</b><span>#FFF1C7</span></li><li><span class="chip" style="background:#6E3A7D"></span><b>Plum</b><span>#6E3A7D</span></li><li><span class="chip" style="background:#C8CBE3"></span><b>Mist</b><span>#C8CBE3</span></li></ul>
+    <div class="type"><p class="disp">Good morning.</p><p class="ui">Three emails need you. Your next meeting is at 10:00 with Sam.</p><small>Young Serif + Atkinson Hyperlegible Next</small></div>
+    <blockquote class="voice">Morning. It’s a quiet one: a meeting at ten, and two emails that want you.</blockquote>
+  </div>
+</section>
+<section class="concept" id="avocet" style="--tint:#EAF3F2;--ink:#1C2B33;--disp:'Hanken Grotesk', sans-serif;--ui:'Hanken Grotesk', sans-serif">
+  <div class="id">
+    <img class="lockup" src="avocet/lockup.svg" alt="Avocet lockup" height="56">
+    <p class="say">“Hey Avocet”<span>AV-uh-set /ˈæv.ə.sɛt/</span></p>
+    <p class="line">A wading bird that sweeps its upturned bill through the shallows and keeps only what matters.</p>
+    <p class="pers">Calm, observant, economical <em class="rec ru">Runner-up</em></p>
+  </div>
+  <div class="tile light">
+    <div class="sizes"><img src="avocet/mark.svg" width="96" height="96" alt="Avocet mark"><img src="avocet/mark.svg" width="48" height="48" alt=""><img src="avocet/mark.svg" width="24" height="24" alt=""><img src="avocet/mark.svg" width="16" height="16" alt=""></div>
+    <img src="avocet/lockup.svg" height="36" alt="">
+  </div>
+  <div class="tile dark">
+    <div class="sizes"><img src="avocet/mark.svg" width="96" height="96" alt=""><img src="avocet/mark.svg" width="48" height="48" alt=""><img src="avocet/mark.svg" width="24" height="24" alt=""><img src="avocet/mark.svg" width="16" height="16" alt=""></div>
+    <img src="avocet/lockup-dark.svg" height="36" alt="">
+  </div>
+  <div class="tile icon">
+    <img src="avocet/app-icon.svg" width="112" height="112" alt="Avocet app icon">
+    <div class="small"><img src="avocet/app-icon.svg" width="48" height="48" alt=""><img src="avocet/app-icon.svg" width="32" height="32" alt=""><img src="avocet/app-icon.svg" width="24" height="24" alt=""></div>
+    <div class="bar lt"><img src="avocet/tray-16.svg" width="16" height="16" alt="Avocet tray icon"><i></i><i></i><span>9:41</span></div>
+    <div class="bar dk"><img src="avocet/tray-16.svg" width="16" height="16" alt=""><i></i><i></i><span>9:41</span></div>
+  </div>
+  <div class="tile states"><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true"><path d="M-6 41.5H54" stroke="#6FC2BE" stroke-opacity=".5" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M27.5 32C25.6 25.5 26 19.5 29.5 14" fill="none" stroke="#2E7D7F" stroke-width="7" stroke-linecap="round"/>
+  <path d="M33.6 10.6C39 11.2 43.6 9.4 47 3.8C45.8 10.4 40.8 15.2 34.2 15.6Z" fill="#2E7D7F"/>
+  <circle cx="30" cy="13" r="5.75" fill="#2E7D7F"/>
+  <path d="M1.5 27C8.5 30.8 17.5 31.4 25 30.2C30.5 29.3 35 30.4 35.6 33.4C36.4 37.6 30.5 40.8 21.5 40.8C12.8 40.8 6 37.8 3.8 33.4C2.8 31.4 2.1 29.2 1.5 27Z" fill="#2E7D7F"/>
+  <path d="M8.5 34.2C15 36.2 22.5 36.2 29.5 34.2" fill="none" stroke="#F4F7F5" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="31.4" cy="12" r="1.7" fill="#F4F7F5"/></svg><figcaption>idle</figcaption></figure><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true"><path d="M-6 41.5H54" stroke="#6FC2BE" stroke-opacity=".5" stroke-width="1.5" stroke-linecap="round"/><g transform="translate(0 -2)">
+  <path d="M27.5 32C25.6 25.5 26 19.5 29.5 14" fill="none" stroke="#2E7D7F" stroke-width="7" stroke-linecap="round"/>
+  <path d="M33.6 10.6C39 11.2 43.6 9.4 47 3.8C45.8 10.4 40.8 15.2 34.2 15.6Z" fill="#2E7D7F"/>
+  <circle cx="30" cy="13" r="5.75" fill="#2E7D7F"/>
+  <path d="M1.5 27C8.5 30.8 17.5 31.4 25 30.2C30.5 29.3 35 30.4 35.6 33.4C36.4 37.6 30.5 40.8 21.5 40.8C12.8 40.8 6 37.8 3.8 33.4C2.8 31.4 2.1 29.2 1.5 27Z" fill="#2E7D7F"/>
+  <path d="M8.5 34.2C15 36.2 22.5 36.2 29.5 34.2" fill="none" stroke="#F4F7F5" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="31.4" cy="12" r="2.4" fill="#F4F7F5"/><circle cx="31.9" cy="11.8" r="1" fill="#1C2B33"/></g></svg><figcaption>listening</figcaption></figure><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true"><path d="M-6 41.5H54" stroke="#6FC2BE" stroke-opacity=".5" stroke-width="1.5" stroke-linecap="round"/><g transform="rotate(-9 19 38)">
+  <path d="M27.5 32C25.6 25.5 26 19.5 29.5 14" fill="none" stroke="#2E7D7F" stroke-width="7" stroke-linecap="round"/>
+  <path d="M33.6 10.6C39 11.2 43.6 9.4 47 3.8C45.8 10.4 40.8 15.2 34.2 15.6Z" fill="#2E7D7F"/>
+  <circle cx="30" cy="13" r="5.75" fill="#2E7D7F"/>
+  <path d="M1.5 27C8.5 30.8 17.5 31.4 25 30.2C30.5 29.3 35 30.4 35.6 33.4C36.4 37.6 30.5 40.8 21.5 40.8C12.8 40.8 6 37.8 3.8 33.4C2.8 31.4 2.1 29.2 1.5 27Z" fill="#2E7D7F"/>
+  <path d="M8.5 34.2C15 36.2 22.5 36.2 29.5 34.2" fill="none" stroke="#F4F7F5" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="31.4" cy="12" r="1.7" fill="#F4F7F5"/></g><path d="M38 18q4 2 7 1" fill="none" stroke="#6FC2BE" stroke-width="1.4" stroke-linecap="round" stroke-opacity=".7"/></svg><figcaption>thinking</figcaption></figure><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true"><g fill="none" stroke="#6FC2BE" stroke-width="1.5"><ellipse cx="20" cy="41.5" rx="24" ry="3.5" stroke-opacity=".6"/><ellipse cx="20" cy="41.5" rx="30" ry="5.5" stroke-opacity=".3"/></g>
+  <path d="M27.5 32C25.6 25.5 26 19.5 29.5 14" fill="none" stroke="#2E7D7F" stroke-width="7" stroke-linecap="round"/>
+  <path d="M33.6 10.6C39 11.2 43.6 9.4 47 3.8C45.8 10.4 40.8 15.2 34.2 15.6Z" fill="#2E7D7F"/>
+  <circle cx="30" cy="13" r="5.75" fill="#2E7D7F"/>
+  <path d="M1.5 27C8.5 30.8 17.5 31.4 25 30.2C30.5 29.3 35 30.4 35.6 33.4C36.4 37.6 30.5 40.8 21.5 40.8C12.8 40.8 6 37.8 3.8 33.4C2.8 31.4 2.1 29.2 1.5 27Z" fill="#2E7D7F"/>
+  <path d="M8.5 34.2C15 36.2 22.5 36.2 29.5 34.2" fill="none" stroke="#F4F7F5" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="31.4" cy="12" r="1.7" fill="#F4F7F5"/></svg><figcaption>speaking</figcaption></figure></div>
+  <div class="foot">
+    <ul class="pal"><li><span class="chip" style="background:#1C2B33"></span><b>Pied</b><span>#1C2B33</span></li><li><span class="chip" style="background:#2E7D7F"></span><b>Estuary</b><span>#2E7D7F</span></li><li><span class="chip" style="background:#6FC2BE"></span><b>Tide</b><span>#6FC2BE</span></li><li><span class="chip" style="background:#F4F7F5"></span><b>Salt</b><span>#F4F7F5</span></li><li><span class="chip" style="background:#CDBB98"></span><b>Silt</b><span>#CDBB98</span></li></ul>
+    <div class="type"><p class="disp">Good morning.</p><p class="ui">Three emails need you. Your next meeting is at 10:00 with Sam.</p><small>Hanken Grotesk</small></div>
+    <blockquote class="voice">Three things matter this morning. The rest can wait.</blockquote>
+  </div>
+</section>
+<section class="concept" id="jerboa" style="--tint:#FFF0E0;--ink:#3A2619;--disp:'Fredoka', sans-serif;--ui:'Lexend', sans-serif">
+  <div class="id">
+    <img class="lockup" src="jerboa/lockup.svg" alt="Jerboa lockup" height="56">
+    <p class="say">“Hey Jerboa”<span>jer-BOH-uh /dʒərˈboʊ.ə/</span></p>
+    <p class="line">A desert hopper with ears bigger than its head. It hears you first and bounces into action.</p>
+    <p class="pers">Playful, quick, affectionate</p>
+  </div>
+  <div class="tile light">
+    <div class="sizes"><img src="jerboa/mark.svg" width="96" height="96" alt="Jerboa mark"><img src="jerboa/mark.svg" width="48" height="48" alt=""><img src="jerboa/mark.svg" width="24" height="24" alt=""><img src="jerboa/mark.svg" width="16" height="16" alt=""></div>
+    <img src="jerboa/lockup.svg" height="36" alt="">
+  </div>
+  <div class="tile dark">
+    <div class="sizes"><img src="jerboa/mark.svg" width="96" height="96" alt=""><img src="jerboa/mark.svg" width="48" height="48" alt=""><img src="jerboa/mark.svg" width="24" height="24" alt=""><img src="jerboa/mark.svg" width="16" height="16" alt=""></div>
+    <img src="jerboa/lockup-dark.svg" height="36" alt="">
+  </div>
+  <div class="tile icon">
+    <img src="jerboa/app-icon.svg" width="112" height="112" alt="Jerboa app icon">
+    <div class="small"><img src="jerboa/app-icon.svg" width="48" height="48" alt=""><img src="jerboa/app-icon.svg" width="32" height="32" alt=""><img src="jerboa/app-icon.svg" width="24" height="24" alt=""></div>
+    <div class="bar lt"><img src="jerboa/tray-16.svg" width="16" height="16" alt="Jerboa tray icon"><i></i><i></i><span>9:41</span></div>
+    <div class="bar dk"><img src="jerboa/tray-16.svg" width="16" height="16" alt=""><i></i><i></i><span>9:41</span></div>
+  </div>
+  <div class="tile states"><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true">
+  <g fill="#F2B45A" stroke="#3A2619" stroke-width="2.5">
+    <ellipse cx="13" cy="15" rx="8.2" ry="12.6" transform="rotate(-26 13 15)"/>
+    <ellipse cx="35" cy="15" rx="8.2" ry="12.6" transform="rotate(26 35 15)"/>
+  </g>
+  <ellipse cx="13.8" cy="16.2" rx="4.1" ry="8" transform="rotate(-26 13.8 16.2)" fill="#FF8FA3"/>
+  <ellipse cx="34.2" cy="16.2" rx="4.1" ry="8" transform="rotate(26 34.2 16.2)" fill="#FF8FA3"/>
+  <ellipse cx="24" cy="33" rx="13.5" ry="11.5" fill="#F2B45A" stroke="#3A2619" stroke-width="2.5"/>
+  <circle cx="18" cy="31.5" r="3.8" fill="#3A2619"/>
+  <circle cx="30" cy="31.5" r="3.8" fill="#3A2619"/>
+  <circle cx="19.3" cy="30.2" r="1.2" fill="#FFF3DC"/>
+  <circle cx="31.3" cy="30.2" r="1.2" fill="#FFF3DC"/>
+  <ellipse cx="24" cy="37.4" rx="1.9" ry="1.25" fill="#3A2619"/></svg><figcaption>idle</figcaption></figure><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true">
+  <g fill="#F2B45A" stroke="#3A2619" stroke-width="2.5">
+    <ellipse cx="13" cy="15" rx="8.2" ry="12.6" transform="rotate(-10 13 15)"/>
+    <ellipse cx="35" cy="15" rx="8.2" ry="12.6" transform="rotate(10 35 15)"/>
+  </g>
+  <ellipse cx="13.8" cy="16.2" rx="4.1" ry="8" transform="rotate(-10 13.8 16.2)" fill="#FF6F8E"/>
+  <ellipse cx="34.2" cy="16.2" rx="4.1" ry="8" transform="rotate(10 34.2 16.2)" fill="#FF6F8E"/>
+  <ellipse cx="24" cy="33" rx="13.5" ry="11.5" fill="#F2B45A" stroke="#3A2619" stroke-width="2.5"/>
+  <circle cx="18" cy="31.5" r="3.8" fill="#3A2619"/>
+  <circle cx="30" cy="31.5" r="3.8" fill="#3A2619"/>
+  <circle cx="19.3" cy="30.2" r="1.2" fill="#FFF3DC"/>
+  <circle cx="31.3" cy="30.2" r="1.2" fill="#FFF3DC"/>
+  <ellipse cx="24" cy="37.4" rx="1.9" ry="1.25" fill="#3A2619"/></svg><figcaption>listening</figcaption></figure><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true">
+  <g fill="#F2B45A" stroke="#3A2619" stroke-width="2.5">
+    <ellipse cx="13" cy="15" rx="8.2" ry="12.6" transform="rotate(-44 13 15)"/>
+    <ellipse cx="35" cy="15" rx="8.2" ry="12.6" transform="rotate(10 35 15)"/>
+  </g>
+  <ellipse cx="13.8" cy="16.2" rx="4.1" ry="8" transform="rotate(-44 13.8 16.2)" fill="#FF8FA3"/>
+  <ellipse cx="34.2" cy="16.2" rx="4.1" ry="8" transform="rotate(10 34.2 16.2)" fill="#FF8FA3"/>
+  <ellipse cx="24" cy="33" rx="13.5" ry="11.5" fill="#F2B45A" stroke="#3A2619" stroke-width="2.5"/>
+  <circle cx="18" cy="31.5" r="3.8" fill="#3A2619"/>
+  <circle cx="30" cy="31.5" r="3.8" fill="#3A2619"/>
+  <circle cx="19.3" cy="30.2" r="1.2" fill="#FFF3DC"/>
+  <circle cx="31.3" cy="30.2" r="1.2" fill="#FFF3DC"/>
+  <ellipse cx="24" cy="37.4" rx="1.9" ry="1.25" fill="#3A2619"/></svg><figcaption>thinking</figcaption></figure><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true"><ellipse cx="24" cy="51" rx="10" ry="1.8" fill="#000" fill-opacity=".35"/><g transform="translate(0 -4)">
+  <g fill="#F2B45A" stroke="#3A2619" stroke-width="2.5">
+    <ellipse cx="13" cy="15" rx="8.2" ry="12.6" transform="rotate(-26 13 15)"/>
+    <ellipse cx="35" cy="15" rx="8.2" ry="12.6" transform="rotate(26 35 15)"/>
+  </g>
+  <ellipse cx="13.8" cy="16.2" rx="4.1" ry="8" transform="rotate(-26 13.8 16.2)" fill="#FF8FA3"/>
+  <ellipse cx="34.2" cy="16.2" rx="4.1" ry="8" transform="rotate(26 34.2 16.2)" fill="#FF8FA3"/>
+  <ellipse cx="24" cy="33" rx="13.5" ry="11.5" fill="#F2B45A" stroke="#3A2619" stroke-width="2.5"/>
+  <circle cx="18" cy="31.5" r="3.8" fill="#3A2619"/>
+  <circle cx="30" cy="31.5" r="3.8" fill="#3A2619"/>
+  <circle cx="19.3" cy="30.2" r="1.2" fill="#FFF3DC"/>
+  <circle cx="31.3" cy="30.2" r="1.2" fill="#FFF3DC"/>
+  <ellipse cx="24" cy="37.4" rx="1.9" ry="1.25" fill="#3A2619"/></g></svg><figcaption>speaking</figcaption></figure></div>
+  <div class="foot">
+    <ul class="pal"><li><span class="chip" style="background:#3A2619"></span><b>Burrow</b><span>#3A2619</span></li><li><span class="chip" style="background:#F2B45A"></span><b>Dune</b><span>#F2B45A</span></li><li><span class="chip" style="background:#FF8FA3"></span><b>Ear</b><span>#FF8FA3</span></li><li><span class="chip" style="background:#1F8A70"></span><b>Oasis</b><span>#1F8A70</span></li><li><span class="chip" style="background:#FFF3DC"></span><b>Moon</b><span>#FFF3DC</span></li></ul>
+    <div class="type"><p class="disp">Good morning.</p><p class="ui">Three emails need you. Your next meeting is at 10:00 with Sam.</p><small>Fredoka + Lexend</small></div>
+    <blockquote class="voice">Good morning! Your inbox behaved overnight. Just two need you.</blockquote>
+  </div>
+</section>
+<section class="concept" id="samara" style="--tint:#E7F2F7;--ink:#1E4A35;--disp:'Alegreya', serif;--ui:'Alegreya Sans', sans-serif">
+  <div class="id">
+    <img class="lockup" src="samara/lockup.svg" alt="Samara lockup" height="56">
+    <p class="say">“Hey Samara”<span>SAM-uh-ruh /ˈsæm.ər.ə/</span></p>
+    <p class="line">The winged maple seed that spins on the wind. Your 24-word seed carries you to your own machines, and nowhere else.</p>
+    <p class="pers">Light, optimistic, outdoorsy</p>
+  </div>
+  <div class="tile light">
+    <div class="sizes"><img src="samara/mark.svg" width="96" height="96" alt="Samara mark"><img src="samara/mark.svg" width="48" height="48" alt=""><img src="samara/mark.svg" width="24" height="24" alt=""><img src="samara/mark.svg" width="16" height="16" alt=""></div>
+    <img src="samara/lockup.svg" height="36" alt="">
+  </div>
+  <div class="tile dark">
+    <div class="sizes"><img src="samara/mark.svg" width="96" height="96" alt=""><img src="samara/mark.svg" width="48" height="48" alt=""><img src="samara/mark.svg" width="24" height="24" alt=""><img src="samara/mark.svg" width="16" height="16" alt=""></div>
+    <img src="samara/lockup-dark.svg" height="36" alt="">
+  </div>
+  <div class="tile icon">
+    <img src="samara/app-icon.svg" width="112" height="112" alt="Samara app icon">
+    <div class="small"><img src="samara/app-icon.svg" width="48" height="48" alt=""><img src="samara/app-icon.svg" width="32" height="32" alt=""><img src="samara/app-icon.svg" width="24" height="24" alt=""></div>
+    <div class="bar lt"><img src="samara/tray-16.svg" width="16" height="16" alt="Samara tray icon"><i></i><i></i><span>9:41</span></div>
+    <div class="bar dk"><img src="samara/tray-16.svg" width="16" height="16" alt=""><i></i><i></i><span>9:41</span></div>
+  </div>
+  <div class="tile states"><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true"><g transform="rotate(-4 12 38)">
+  <path d="M9 32C15 21.5 22.5 12 31 5.6C35 2.6 42 3 44.8 7.4C47.4 11.6 45.2 17.6 39.6 22.6C33.6 28 26 31.4 21.2 34.4C19 35.8 17.8 37.8 17 40Z" fill="#D59B48"/>
+  <path d="M10.4 32.4C16.4 22 23.6 13 31.6 6.6" fill="none" stroke="#7A4A1E" stroke-width="3" stroke-linecap="round"/>
+  <path d="M14.6 30.6C20.6 25.4 27 22 34.2 20.4M18.2 24.8C24.4 19.4 31 16 38.6 14.4M22.4 19C28.4 13.8 34.6 10.6 41.6 9.4M16.6 33.8C22 30.6 27 28.6 31.6 27.8" fill="none" stroke="#9A6A2C" stroke-width="1.3" stroke-linecap="round"/>
+  <ellipse cx="11.8" cy="37.8" rx="7.2" ry="6.2" transform="rotate(-40 11.8 37.8)" fill="#7A4A1E"/></g></svg><figcaption>idle</figcaption></figure><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true"><g transform="rotate(-14 12 38)">
+  <path d="M9 32C15 21.5 22.5 12 31 5.6C35 2.6 42 3 44.8 7.4C47.4 11.6 45.2 17.6 39.6 22.6C33.6 28 26 31.4 21.2 34.4C19 35.8 17.8 37.8 17 40Z" fill="#D59B48"/>
+  <path d="M10.4 32.4C16.4 22 23.6 13 31.6 6.6" fill="none" stroke="#7A4A1E" stroke-width="3" stroke-linecap="round"/>
+  <path d="M14.6 30.6C20.6 25.4 27 22 34.2 20.4M18.2 24.8C24.4 19.4 31 16 38.6 14.4M22.4 19C28.4 13.8 34.6 10.6 41.6 9.4M16.6 33.8C22 30.6 27 28.6 31.6 27.8" fill="none" stroke="#9A6A2C" stroke-width="1.3" stroke-linecap="round"/>
+  <ellipse cx="11.8" cy="37.8" rx="7.2" ry="6.2" transform="rotate(-40 11.8 37.8)" fill="#7A4A1E"/></g></svg><figcaption>listening</figcaption></figure><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true"><g opacity=".18"><g transform="rotate(-70 12 38)">
+  <path d="M9 32C15 21.5 22.5 12 31 5.6C35 2.6 42 3 44.8 7.4C47.4 11.6 45.2 17.6 39.6 22.6C33.6 28 26 31.4 21.2 34.4C19 35.8 17.8 37.8 17 40Z" fill="#D59B48"/>
+  <path d="M10.4 32.4C16.4 22 23.6 13 31.6 6.6" fill="none" stroke="#7A4A1E" stroke-width="3" stroke-linecap="round"/>
+  <path d="M14.6 30.6C20.6 25.4 27 22 34.2 20.4M18.2 24.8C24.4 19.4 31 16 38.6 14.4M22.4 19C28.4 13.8 34.6 10.6 41.6 9.4M16.6 33.8C22 30.6 27 28.6 31.6 27.8" fill="none" stroke="#9A6A2C" stroke-width="1.3" stroke-linecap="round"/>
+  <ellipse cx="11.8" cy="37.8" rx="7.2" ry="6.2" transform="rotate(-40 11.8 37.8)" fill="#7A4A1E"/></g></g><g opacity=".35"><g transform="rotate(-35 12 38)">
+  <path d="M9 32C15 21.5 22.5 12 31 5.6C35 2.6 42 3 44.8 7.4C47.4 11.6 45.2 17.6 39.6 22.6C33.6 28 26 31.4 21.2 34.4C19 35.8 17.8 37.8 17 40Z" fill="#D59B48"/>
+  <path d="M10.4 32.4C16.4 22 23.6 13 31.6 6.6" fill="none" stroke="#7A4A1E" stroke-width="3" stroke-linecap="round"/>
+  <path d="M14.6 30.6C20.6 25.4 27 22 34.2 20.4M18.2 24.8C24.4 19.4 31 16 38.6 14.4M22.4 19C28.4 13.8 34.6 10.6 41.6 9.4M16.6 33.8C22 30.6 27 28.6 31.6 27.8" fill="none" stroke="#9A6A2C" stroke-width="1.3" stroke-linecap="round"/>
+  <ellipse cx="11.8" cy="37.8" rx="7.2" ry="6.2" transform="rotate(-40 11.8 37.8)" fill="#7A4A1E"/></g></g>
+  <path d="M9 32C15 21.5 22.5 12 31 5.6C35 2.6 42 3 44.8 7.4C47.4 11.6 45.2 17.6 39.6 22.6C33.6 28 26 31.4 21.2 34.4C19 35.8 17.8 37.8 17 40Z" fill="#D59B48"/>
+  <path d="M10.4 32.4C16.4 22 23.6 13 31.6 6.6" fill="none" stroke="#7A4A1E" stroke-width="3" stroke-linecap="round"/>
+  <path d="M14.6 30.6C20.6 25.4 27 22 34.2 20.4M18.2 24.8C24.4 19.4 31 16 38.6 14.4M22.4 19C28.4 13.8 34.6 10.6 41.6 9.4M16.6 33.8C22 30.6 27 28.6 31.6 27.8" fill="none" stroke="#9A6A2C" stroke-width="1.3" stroke-linecap="round"/>
+  <ellipse cx="11.8" cy="37.8" rx="7.2" ry="6.2" transform="rotate(-40 11.8 37.8)" fill="#7A4A1E"/></svg><figcaption>thinking</figcaption></figure><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true"><g opacity=".3"><g transform="rotate(7 12 38)">
+  <path d="M9 32C15 21.5 22.5 12 31 5.6C35 2.6 42 3 44.8 7.4C47.4 11.6 45.2 17.6 39.6 22.6C33.6 28 26 31.4 21.2 34.4C19 35.8 17.8 37.8 17 40Z" fill="#D59B48"/>
+  <path d="M10.4 32.4C16.4 22 23.6 13 31.6 6.6" fill="none" stroke="#7A4A1E" stroke-width="3" stroke-linecap="round"/>
+  <path d="M14.6 30.6C20.6 25.4 27 22 34.2 20.4M18.2 24.8C24.4 19.4 31 16 38.6 14.4M22.4 19C28.4 13.8 34.6 10.6 41.6 9.4M16.6 33.8C22 30.6 27 28.6 31.6 27.8" fill="none" stroke="#9A6A2C" stroke-width="1.3" stroke-linecap="round"/>
+  <ellipse cx="11.8" cy="37.8" rx="7.2" ry="6.2" transform="rotate(-40 11.8 37.8)" fill="#7A4A1E"/></g></g><g transform="rotate(-3 12 38)">
+  <path d="M9 32C15 21.5 22.5 12 31 5.6C35 2.6 42 3 44.8 7.4C47.4 11.6 45.2 17.6 39.6 22.6C33.6 28 26 31.4 21.2 34.4C19 35.8 17.8 37.8 17 40Z" fill="#D59B48"/>
+  <path d="M10.4 32.4C16.4 22 23.6 13 31.6 6.6" fill="none" stroke="#7A4A1E" stroke-width="3" stroke-linecap="round"/>
+  <path d="M14.6 30.6C20.6 25.4 27 22 34.2 20.4M18.2 24.8C24.4 19.4 31 16 38.6 14.4M22.4 19C28.4 13.8 34.6 10.6 41.6 9.4M16.6 33.8C22 30.6 27 28.6 31.6 27.8" fill="none" stroke="#9A6A2C" stroke-width="1.3" stroke-linecap="round"/>
+  <ellipse cx="11.8" cy="37.8" rx="7.2" ry="6.2" transform="rotate(-40 11.8 37.8)" fill="#7A4A1E"/></g></svg><figcaption>speaking</figcaption></figure></div>
+  <div class="foot">
+    <ul class="pal"><li><span class="chip" style="background:#1E4A35"></span><b>Canopy</b><span>#1E4A35</span></li><li><span class="chip" style="background:#D59B48"></span><b>Key</b><span>#D59B48</span></li><li><span class="chip" style="background:#7A4A1E"></span><b>Kernel</b><span>#7A4A1E</span></li><li><span class="chip" style="background:#5F9B3A"></span><b>Sap</b><span>#5F9B3A</span></li><li><span class="chip" style="background:#BFE0F0"></span><b>Sky</b><span>#BFE0F0</span></li><li><span class="chip" style="background:#F3E6CF"></span><b>Husk</b><span>#F3E6CF</span></li></ul>
+    <div class="type"><p class="disp">Good morning.</p><p class="ui">Three emails need you. Your next meeting is at 10:00 with Sam.</p><small>Alegreya + Alegreya Sans</small></div>
+    <blockquote class="voice">Good morning. Clear skies until four, a light day, and your laptop already has last night’s notes.</blockquote>
+  </div>
+</section>
+<section class="concept" id="pilcrow" style="--tint:#EEF2F7;--ink:#2B2420;--disp:'Libre Caslon Text', serif;--ui:'Libre Franklin', sans-serif">
+  <div class="id">
+    <img class="lockup" src="pilcrow/lockup.svg" alt="Pilcrow lockup" height="56">
+    <p class="say">“Hey Pilcrow”<span>PIL-kroh /ˈpɪl.kroʊ/</span></p>
+    <p class="line">The paragraph mark, the sign of a new thought. An editor that turns what you say into clean text.</p>
+    <p class="pers">Dry, literate, exact</p>
+  </div>
+  <div class="tile light">
+    <div class="sizes"><img src="pilcrow/mark.svg" width="96" height="96" alt="Pilcrow mark"><img src="pilcrow/mark.svg" width="48" height="48" alt=""><img src="pilcrow/mark.svg" width="24" height="24" alt=""><img src="pilcrow/mark.svg" width="16" height="16" alt=""></div>
+    <img src="pilcrow/lockup.svg" height="36" alt="">
+  </div>
+  <div class="tile dark">
+    <div class="sizes"><img src="pilcrow/mark.svg" width="96" height="96" alt=""><img src="pilcrow/mark.svg" width="48" height="48" alt=""><img src="pilcrow/mark.svg" width="24" height="24" alt=""><img src="pilcrow/mark.svg" width="16" height="16" alt=""></div>
+    <img src="pilcrow/lockup-dark.svg" height="36" alt="">
+  </div>
+  <div class="tile icon">
+    <img src="pilcrow/app-icon.svg" width="112" height="112" alt="Pilcrow app icon">
+    <div class="small"><img src="pilcrow/app-icon.svg" width="48" height="48" alt=""><img src="pilcrow/app-icon.svg" width="32" height="32" alt=""><img src="pilcrow/app-icon.svg" width="24" height="24" alt=""></div>
+    <div class="bar lt"><img src="pilcrow/tray-16.svg" width="16" height="16" alt="Pilcrow tray icon"><i></i><i></i><span>9:41</span></div>
+    <div class="bar dk"><img src="pilcrow/tray-16.svg" width="16" height="16" alt=""><i></i><i></i><span>9:41</span></div>
+  </div>
+  <div class="tile states"><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true">
+  <path d="M19 6.5H39.5V41.5H34V12H29.5V41.5H24V27.5H19A10.5 10.5 0 0 1 19 6.5Z" fill="#2F7FC1"/></svg><figcaption>idle</figcaption></figure><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true">
+  <path d="M19 6.5H39.5V41.5H34V12H29.5V41.5H24V27.5H19A10.5 10.5 0 0 1 19 6.5Z" fill="#9ED8F0"/><clipPath id="lv"><rect x="0" y="19" width="48" height="30"/></clipPath><g clip-path="url(#lv)">
+  <path d="M19 6.5H39.5V41.5H34V12H29.5V41.5H24V27.5H19A10.5 10.5 0 0 1 19 6.5Z" fill="#2F7FC1"/></g></svg><figcaption>listening</figcaption></figure><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true"><path d="M19 6.5H39.5V12H29.5V41.5H24V27.5H19A10.5 10.5 0 0 1 19 6.5Z" fill="#2F7FC1"/><rect x="34" y="12" width="5.5" height="29.5" fill="#2F7FC1" opacity=".3"/></svg><figcaption>thinking</figcaption></figure><figure class="st"><svg viewBox="-8 -8 64 64" width="84" height="84" aria-hidden="true"><g transform="translate(-4 0)">
+  <path d="M19 6.5H39.5V41.5H34V12H29.5V41.5H24V27.5H19A10.5 10.5 0 0 1 19 6.5Z" fill="#2F7FC1"/></g><g stroke="#9ED8F0" stroke-width="2.5" stroke-linecap="round"><path d="M45 16H54M45 23H52M45 30H54"/></g></svg><figcaption>speaking</figcaption></figure></div>
+  <div class="foot">
+    <ul class="pal"><li><span class="chip" style="background:#2B2420"></span><b>Iron gall</b><span>#2B2420</span></li><li><span class="chip" style="background:#2F7FC1"></span><b>Blueline</b><span>#2F7FC1</span></li><li><span class="chip" style="background:#9ED8F0"></span><b>Non-photo</b><span>#9ED8F0</span></li><li><span class="chip" style="background:#EEF2F7"></span><b>Margin</b><span>#EEF2F7</span></li><li><span class="chip" style="background:#6A6F7A"></span><b>Graphite</b><span>#6A6F7A</span></li></ul>
+    <div class="type"><p class="disp">Good morning.</p><p class="ui">Three emails need you. Your next meeting is at 10:00 with Sam.</p><small>Libre Caslon Text + Libre Franklin</small></div>
+    <blockquote class="voice">Good morning. Today’s draft: one meeting, three emails worth your time, and a CI run that failed overnight.</blockquote>
+  </div>
+</section>
+</main>
+<footer>Name checks are quick web searches, not legal clearance. All fonts are SIL Open Font License. Wordmarks in the SVG files are outlined paths.</footer>
+</body>
+</html>

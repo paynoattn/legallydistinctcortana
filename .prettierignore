@@ -1,0 +1,14 @@
+pnpm-lock.yaml
+coverage/
+dist/
+reports/
+.stryker-tmp/
+.cursor/
+.claude/
+CLAUDE.md
+target/
+mutants.out/
+crates/desktop/gen/
+docs/brand/
+docs/design/
+Cargo.lock

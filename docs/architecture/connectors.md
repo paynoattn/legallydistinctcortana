@@ -1,0 +1,71 @@
+# Connectors
+
+Connectors are infrastructure adapters that implement ports owned by the mail, calendar, reminders, feeds, and models contexts. Contexts never know which provider they talk to.
+
+```
+mail-application::MailSource        ← connector-imap, connector-msgraph, connector-google, connector-jmap
+calendar-application::CalendarSource← connector-google, connector-msgraph, connector-caldav (+ local ICS)
+reminders-application::TaskProvider ← connector-msgraph (To Do), connector-google (Tasks), connector-caldav (VTODO), local
+feeds-application::FeedSource       ← connector-feeds (RSS/Atom/JSON Feed, HN, Reddit, GitHub releases)
+models-application::ChatModel       ← connector-llm (OpenAI-compatible, Anthropic, Gemini)
+```
+
+## Common rules
+
+- **Auth.** OAuth 2.0 for installed apps per RFC 8252: system browser, loopback redirect on `127.0.0.1:<random port>`, PKCE, no confidential client secret in the binary. (Google issues a "client secret" for desktop OAuth clients and documents it as not confidential; shipping it is accepted practice. Verify in #040, along with Microsoft's handling of `http://127.0.0.1` redirects with any port.) Passwords and app passwords for IMAP, POP3, and CalDAV. All credentials live in the encrypted store. OAuth tokens are device-local by default; "sync this account's credentials to my other devices" is opt-in per account.
+- **Polling, not push, for MVP.** Each account has a cadence. IMAP IDLE and Graph change notifications are post-MVP (Graph webhooks need a public endpoint, so Graph delta queries stay the method).
+- **One poller per account across devices.** An account is polled by the device holding its **lease** in the synced store (renewed every cadence; taken over after 2× cadence of silence). Other devices receive digests and state through sync, so mail is not fetched or summarized four times.
+- **Incremental sync.** IMAP: `UIDVALIDITY` + `UIDNEXT` (+ `CONDSTORE`/`MODSEQ` when available). POP3: UIDL set. Graph: delta queries. Gmail: `historyId`. CalDAV: `sync-token` (RFC 6578) with a ctag/etag fallback. Feeds: `ETag` and `Last-Modified`.
+- **Minimal fetch.** Triage needs headers + the first 8 KB of text. Full bodies are fetched on demand. Attachments are never fetched for triage.
+- **Rate limits and backoff.** Exponential backoff with jitter. `Retry-After` is honored. Failures surface in Settings → Accounts with the provider's message and a fix action.
+- **Contract tests.** Each connector has a contract test suite run against a fake. IMAP, SMTP, and CalDAV also run against Dovecot and Radicale containers in CI. Graph and Google use recorded fixtures; live tests are manual, documented in `qa/procedures/`.
+
+## Mail
+
+| Provider                                        | Protocol                                           | Auth                                                                             | Notes and risks                                                                                                                                                                                                                                                                                                                             |
+| ----------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Any IMAP (Fastmail, iCloud, Yahoo, self-hosted) | IMAP4rev1/rev2 + SMTP                              | Password or app password; XOAUTH2 where offered                                  | iCloud needs an app-specific password.                                                                                                                                                                                                                                                                                                      |
+| POP3                                            | POP3 + SMTP                                        | Password                                                                         | No server flags: read/archive state is local only. Shown as a limited account.                                                                                                                                                                                                                                                              |
+| Outlook.com, Live, Hotmail, M365                | Microsoft Graph (`/me/messages`, delta)            | OAuth (public client, multi-tenant + personal accounts)                          | Microsoft removed basic-auth IMAP for consumer accounts, so Graph is the path. Some work tenants require admin consent; the error says so.                                                                                                                                                                                                  |
+| Gmail                                           | Gmail API (`historyId`) **or** IMAP + app password | OAuth (user-supplied client ID, or the project's verified client) / app password | **Risk:** Gmail read scopes are _restricted_. A shared client ID needs Google's verification, and the security-assessment requirement must be confirmed for a local-only app (spike [#062](../issues/062-spike-google-oauth-verification.md)). Until then: IMAP + app password, or "bring your own OAuth client" with a step-by-step guide. |
+| Proton Mail                                     | IMAP/SMTP via Proton Mail Bridge on localhost      | Bridge password                                                                  | Bridge requires a paid Proton plan and must be running. Detect it and explain when it is missing.                                                                                                                                                                                                                                           |
+| Fastmail                                        | JMAP                                               | API token                                                                        | Faster than IMAP; post-MVP if IMAP covers it.                                                                                                                                                                                                                                                                                               |
+
+Sending mail is always an `External` tool that needs confirmation ([assistant](assistant.md)).
+
+## Calendar
+
+| Provider                                   | Protocol                      | Auth                                                 | Notes                                                                    |
+| ------------------------------------------ | ----------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------ |
+| Google Calendar                            | Calendar API v3 (`syncToken`) | OAuth (`calendar.readonly`, later `calendar.events`) | Sensitive (not restricted) scopes: verification, no security assessment. |
+| Outlook / M365                             | Graph `calendarView` + delta  | OAuth (`Calendars.Read`)                             |                                                                          |
+| iCloud Calendar                            | CalDAV (`caldav.icloud.com`)  | Apple ID + app-specific password                     | Works today.                                                             |
+| Any CalDAV (Nextcloud, Radicale, Fastmail) | CalDAV                        | Password                                             |                                                                          |
+| Local / subscribed ICS                     | HTTP GET or file              | none                                                 | Read-only.                                                               |
+
+Event alerts compute lead time from the event, the user's per-calendar defaults, and (opt-in) travel time. A join link (Teams, Meet, Zoom, Webex) is extracted from location and body.
+
+## Reminders and tasks
+
+| Provider             | Protocol                          | Notes and risks                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Local                | Our store                         | Always available and synced through our own sync. The default.                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Microsoft To Do      | Graph `/me/todo/lists/{id}/tasks` | Full read/write, recurrence maps to Graph `patternedRecurrence`.                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Google Tasks         | Tasks API v1                      | No recurrence or time-of-day in the API: we keep the schedule locally and mirror the task.                                                                                                                                                                                                                                                                                                                                                                                         |
+| CalDAV VTODO         | CalDAV                            | Nextcloud, Fastmail, Radicale, and others.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **iCloud Reminders** | n/a                               | **High risk.** Reminders created in the modern Reminders app are not exposed over CalDAV, and Apple publishes no API. Spike [#063](../issues/063-spike-icloud-reminders.md) evaluates: a Shortcuts automation on the user's iPhone or Mac that exports to a CalDAV list or our local API; CalDAV for legacy lists; and reverse-engineered web APIs (rejected by default as fragile and against the terms). MVP ships without iCloud Reminders unless the spike finds a clean path. |
+
+Two-way sync rules: the provider is the source of truth for items it owns. Our local copy carries the schedule extensions a provider cannot express (spoken alerts, location, person triggers). Conflicts resolve by `last-modified`, and a conflict log is visible in settings.
+
+## Feeds
+
+- RSS 0.9x/2.0, Atom, and JSON Feed (`feed-rs`), OPML import and export, conditional GET, per-feed TTL with a 15-minute floor.
+- Presets: Hacker News (front page and "Show HN"), Reddit (`/r/<sub>/.rss`), GitHub releases (`/releases.atom`), YouTube channel feeds, and newsletters by mail label or folder (through the mail context).
+- **Interest profile:** topics as phrases plus embeddings ("Rust", "local LLMs", "Formula 1"), each with a weight and mute words. Ranking = embedding similarity × recency decay × source weight, with dedupe by canonical URL and by title similarity. Thumbs up/down on the Today view adjusts the weights.
+
+## AI apps and agents
+
+- **Chat providers:** see [assistant](assistant.md) (OpenAI-compatible endpoints, Anthropic, Gemini). API keys are stored in the vault, never in plain-text config.
+- **Agent CLIs as tools:** Claude Code and Codex run headless in a working directory the user picks, with their own auth. Output streams to the panel, and the final summary goes into the conversation. Effect: `External`, because the agent may call the network and edit files.
+- **Projects view:** reads (read-only) git state of configured repositories, CI status through `gh` or the GitHub REST API with a fine-grained read-only token, and agent session metadata from the agents' local session folders (titles, last activity, status). Session content is read only to summarize, and only with a local model unless the user's policy says otherwise.
+- **MCP servers:** configured in settings (stdio or streamable HTTP), each tool tagged by effect. Imports a Claude Desktop `claude_desktop_config.json` on request.

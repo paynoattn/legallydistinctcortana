@@ -1,0 +1,51 @@
+# OS integration (Windows first)
+
+All OS calls go through ports in `platform-ports` (application layer). `platform-windows` implements them with the `windows` crate. macOS and Linux adapters come later; nothing above the port may `cfg(windows)`.
+
+| Port              | Windows implementation                                                                                                                                  | Notes                                                                                                                                                                                                                                                                                                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `HotkeySource`    | Low-level keyboard hook (`SetWindowsHookExW(WH_KEYBOARD_LL)`) on a dedicated thread with its own message loop                                           | Key down **and** up are needed for push-to-talk; `RegisterHotKey` only reports presses. The hook callback does no work: it posts to a channel and returns in < 1 ms, or Windows removes the hook. Default bindings: hold Right Ctrl (dictate), Win+Alt+Space (assistant), Win+Alt+R (read selection). All configurable, with conflict detection. |
+| `SelectionReader` | UI Automation `TextPattern.GetSelection()` on the focused element; fallback: save clipboard, send Ctrl+C, read, restore                                 | UIA works in Edge, Chrome, Word, and most native apps. The fallback handles the rest. Never leaves the user's clipboard changed.                                                                                                                                                                                                                 |
+| `TextInjector`    | Clipboard + `SendInput(Ctrl+V)`, restore after 150 ms; `ValuePattern.SetValue` for simple fields; typed `SendInput` Unicode for short text in terminals | Detect UIPI (target elevated) and fall back to "Copied".                                                                                                                                                                                                                                                                                         |
+| `ForegroundApp`   | `GetForegroundWindow` → process image name + window class                                                                                               | Used for target-aware formatting and focus rules.                                                                                                                                                                                                                                                                                                |
+| `Notifier`        | Windows App SDK app notifications (toast) with buttons (Snooze 10 min, Done, Join) and an activation handler                                            | Needs an AppUserModelID and a Start-menu shortcut (the installer creates both). Buttons round-trip through COM activation; a spike confirms the Tauri-compatible path ([#064](../issues/064-spike-actionable-toasts.md)).                                                                                                                        |
+| `FocusState`      | `SHQueryUserNotificationState` (presentation, full-screen, quiet time) + Windows Focus sessions                                                         | Feeds the notify delivery policy.                                                                                                                                                                                                                                                                                                                |
+| `Autostart`       | `tauri-plugin-autostart` (HKCU Run key) with `--background` or `--today`                                                                                | User chooses: "start hidden in tray" or "show Today at sign-in".                                                                                                                                                                                                                                                                                 |
+| `PowerEvents`     | `RegisterPowerSettingNotification`, `WTSRegisterSessionNotification`                                                                                    | Sleep, resume, lock, unlock. On resume the scheduler runs catch-up.                                                                                                                                                                                                                                                                              |
+| `AudioDevices`    | WASAPI device enumeration + `IMMNotificationClient`                                                                                                     | Hot-plug of headsets; default device follows Windows unless pinned.                                                                                                                                                                                                                                                                              |
+
+## Overlay window
+
+- Created at startup, hidden: `transparent`, `decorations: false`, `always_on_top`, `skip_taskbar`, `focusable: false`, `shadow: false`, 160×160 logical px.
+- After creation, set `WS_EX_NOACTIVATE | WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOOLWINDOW` so it never steals focus (dictation must paste into the app the user is in) and lets clicks through, except the error state, which toggles `WS_EX_TRANSPARENT` off so its "fix" link can be clicked.
+- Position: bottom-right of the work area (`SystemParametersInfo(SPI_GETWORKAREA)` per monitor), 16 px margin, on the monitor that contains the cursor at hotkey time. It moves on DPI or monitor change.
+- Showing is a single `ShowWindow(SW_SHOWNOACTIVATE)` plus an IPC event; the webview is already loaded, so the 50 ms budget holds.
+
+## Read aloud from the right-click menu
+
+Windows has no system-wide context menu for **selected text** in other apps; the menu you see on a web page belongs to the browser. So there are three entry points, all ending in the same `speech.read_aloud(text, mood)` use case:
+
+1. **Browser extension** (Chrome, Edge, Firefox; Manifest V3) in `extensions/browser/`.
+   - `contextMenus` entries for `contexts: ["selection"]`: **"Read aloud"** with a submenu of moods (Neutral, Calm, Cheerful, Alert, Urgent, Angry, Mad, Whisper, Deadpan) plus **"Summarize and read"** (enabled once the assistant tool loop, #049, lands) and **"Send to my other device"** (enabled once sync transport, #070, lands). #029 ships the menu with read-aloud only and adds the other two as follow-ups.
+   - The extension sends the selection through **native messaging** to `native-host.exe`, which forwards it to the desktop over a per-user named pipe. No localhost port is opened.
+   - The installer registers the native messaging host manifest for Chrome, Edge, and Firefox (HKCU). The extension id allowlist is in the manifest.
+   - Fallback when the desktop app is not running: the extension shows "Start <app> to read aloud" with a button that launches it through a protocol handler (`<app>://wake`).
+2. **Hotkey** (Win+Alt+R): reads the current selection in any app through `SelectionReader`. Holding Shift opens the mood picker at the cursor.
+3. **File Explorer**: right-click on `.txt`, `.md`, `.pdf`, `.docx`, `.html` → "Read aloud" / "Summarize". Implemented as a Windows 11 modern context-menu command (`IExplorerCommand` in a small COM DLL registered through a sparse MSIX package). Post-MVP ([#058](../issues/058-explorer-context-menu.md)).
+
+During playback a small "reading" pill appears with the overlay: pause, stop, mood switch, speed. Esc stops.
+
+## Today mode (full screen at sign-in)
+
+- When "Show Today at sign-in" is on, autostart launches with `--today`. The `today` window opens full screen on the primary monitor: borderless, topmost only until the user's first input, then normal z-order.
+- Navigation is built for keyboard, mouse, touch, **and gamepad** (Gamepad API in the webview: D-pad and stick move focus, A selects, B or Esc closes to the desktop). That gives the "Xbox full-screen experience" feel on handhelds and TVs.
+- It closes to the tray with Esc, B, Win+D, or "Start my day". It can be reopened any time with Win+Alt+T or the tray.
+- Content and layout: [ui](ui.md) and the artboards in [`../design/artboards/`](../design/artboards/).
+- Its data comes from `briefing-application`, which builds a `TodaySnapshot` from read models in under 150 ms. The snapshot is cached at sign-out and shown instantly at sign-in, then refreshed live.
+
+## Installer and runtime requirements
+
+- NSIS installer (per-user, no admin) as the default; MSI for managed deployments. WebView2 Evergreen bootstrapper included.
+- The installer picks the infer-host flavor from a hardware probe (CPU+Vulkan, CUDA, QNN, OpenVINO) and offers the others as optional downloads.
+- Registers: AUMID and Start-menu shortcut (toasts), protocol handler `<app>://`, native messaging host manifests, autostart (if chosen).
+- Uninstall removes everything except the user's profile, and asks before deleting that.

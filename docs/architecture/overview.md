@@ -1,0 +1,149 @@
+# Architecture overview
+
+Status: **proposed** (2026-11-14). Read with [`../product/vision.md`](../product/vision.md). The decisions are recorded in [`adr/`](adr/), and the component designs are in the files linked from [Components](#components).
+
+## Goals that shape the architecture
+
+| Goal                        | Consequence                                                                                                                                                                       |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Local first, private        | Inference, storage, and scheduling run on the device. Network calls are explicit adapters behind ports, and a privacy router decides whether one may run.                         |
+| Always available            | The app lives in the tray, starts at login, and keeps reminders and watchers running with no window open.                                                                         |
+| Fast voice                  | The audio path is native Rust with no IPC hop between capture and VAD. Models stay warm in a separate process. The overlay window is created at startup and only shown on demand. |
+| Crash isolation             | GPU inference (CUDA/Vulkan/DirectML/NPU drivers) runs in a child process. A driver crash restarts the child, not the app.                                                         |
+| Multi-device                | Every write is an operation in an encrypted op log, replicated peer to peer.                                                                                                      |
+| Testable under strict gates | Hexagonal layering per bounded context (domain → application → infrastructure), enforced by `arch.toml` and dependency-cruiser.                                                   |
+| Cross-platform later        | OS integration sits behind ports. `platform-windows` is the first adapter.                                                                                                        |
+
+## Runtime topology
+
+```
+┌──────────────────────────── Desktop process (Tauri 2, tray-resident) ─────────────────────────────┐
+│  Webview windows (React)                                                                           │
+│   main (home, conversation, settings) │ overlay (bottom-right indicator) │ today (full screen)     │
+│   panel (floating answer near cursor) │ confirm (action previews)                                   │
+│        ▲ typed commands + events (tauri-specta bindings)                                           │
+│  Core runtime (tokio)                                                                              │
+│   assistant · scheduler · watchers · notify · reminders · calendar · mail · feeds · projects       │
+│   actions · models router · voice (capture, VAD, dictation) · speech (TTS playback) · sync node    │
+│   store (SQLCipher) · identity/keys · platform-windows (hotkeys, selection, paste, toasts, UIA)     │
+└──────┬───────────────────────────────┬───────────────────────────────┬────────────────────────────┘
+       │ named pipe, framed msgpack    │ named pipe (per-user ACL)     │ QUIC (rustls, raw public keys)
+┌──────▼───────────────────┐   ┌───────▼─────────────┐          ┌──────▼──────────────────────────┐
+│ infer-host (child proc)  │   │ native-host (tiny)  │◄─stdio── │ peers: other devices' desktop or │
+│ STT: whisper.cpp,        │   └─────────────────────┘ browser  │ headless node, over LAN (mDNS)   │
+│      sherpa-onnx         │     native messaging    extension │ or Tailscale (100.x / MagicDNS)  │
+│ TTS: Kokoro, Piper,      │                          (MV3)    └──────────────────────────────────┘
+│      expressive model    │
+│ VAD/wake word (ORT)      │   Optional local servers the router may call (HTTP, loopback only):
+│ manages llama-server     │   Ollama · LM Studio · Foundry Local · llama-server (bundled)
+└──────────────────────────┘
+```
+
+Processes:
+
+1. **desktop**: the Tauri app. It hosts the core runtime in-process, which is the MVP choice ([ADR 0002](adr/0002-process-model.md)). Started at login with `--background` (tray only) or `--today` (opens the full-screen Today view).
+2. **infer-host**: a child process that owns model weights and accelerators. The desktop launches, supervises, and restarts it; "unload models" just stops it. Separate builds per accelerator family (CPU+Vulkan, CUDA, QNN for Snapdragon, OpenVINO for Intel) let the installer pick one.
+3. **native-host**: a ~200 KB executable the browser starts for the extension (Chrome/Edge/Firefox native messaging). It forwards to the desktop over a named pipe. This is how "right-click → Read aloud → mood" works on web pages ([ADR 0008](adr/0008-browser-integration.md)).
+4. **headless** (optional): the same core runtime with no UI. It runs as a sync peer and connector poller on an always-on machine (home server, NAS, desktop tower), serves the local QA API, and is the target of `make qa-rs`.
+5. **mcp-server** (optional): exposes the assistant's tools (reminders, read aloud, briefing) to MCP clients such as Claude Desktop and Claude Code over stdio, proxying to the running desktop.
+
+## Bounded contexts and crates
+
+Each context follows the starter's layering. `<ctx>-domain` is pure (no I/O, no async runtime, no serde_json). `<ctx>-application` holds use cases and port traits. `<ctx>-infrastructure` holds adapters. Composition roots (`desktop`, `headless`, `infer-host`, `mcp-server`) are the only crates that wire infrastructure into application. A context starts with only the layers it needs and adds an `-infrastructure` crate when it first needs an adapter (for example `mail-infrastructure` for digest storage, `assistant-infrastructure` for memory embeddings). Extra adapter crates such as `connector-mcp` and the post-MVP `explorer-command` DLL follow the same rules.
+
+| Context              | Crates                                                                                                                              | Owns                                                                                                                                                                                                                                            |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **kernel**           | `kernel`                                                                                                                            | IDs, `Clock` port, hybrid logical clock, `DataClass`, `PrivacyLevel`, `Mood`, error conventions. No deps.                                                                                                                                       |
+| **kernel-time**      | `kernel-time`                                                                                                                       | Shared-kernel time model on `jiff`: civil dates, time zones passed in as values, RRULE (RFC 5545) expansion, DST rules. Pure; the system tz database is read by infrastructure and handed in. Used by scheduler, reminders, calendar, routines. |
+| **identity**         | `identity-domain`, `-application`, `-infrastructure`                                                                                | BIP-39 seed, key hierarchy, device certificates, revocation ([security](security.md)).                                                                                                                                                          |
+| **settings**         | `settings-domain`, `-application`, `-infrastructure`                                                                                | Typed settings, device-local vs shared scope, schema migration of settings, change events.                                                                                                                                                      |
+| **accounts**         | `accounts-domain`, `-application`, `-infrastructure`                                                                                | Connected accounts, OAuth loopback + PKCE flows, credential vault, account health. Connectors get credentials through its port.                                                                                                                 |
+| **privacy**          | `privacy-domain`, `-application`                                                                                                    | Per-data-class routing policy storage, off-device audit log (`AuditSink` from `kernel`), export and delete-everything.                                                                                                                          |
+| **store**            | `store` (infrastructure library)                                                                                                    | SQLCipher connection pool, migrations, op-log append and apply, store-key unwrapping through a `StoreKeyWrapper` port (DPAPI and Windows Hello adapters live in `platform-windows`).                                                            |
+| **scheduler**        | `scheduler-domain`, `-application`, `-infrastructure`                                                                               | Durable jobs, RRULE recurrence, catch-up after sleep, lease so a job fires on one device only.                                                                                                                                                  |
+| **reminders**        | `reminders-domain`, `-application`, `-infrastructure`                                                                               | Reminder model, natural-language parse ("every Thursday 7pm"), provider sync ports.                                                                                                                                                             |
+| **calendar**         | `calendar-domain`, `-application`                                                                                                   | Events, alert lead times (travel and prep), join links.                                                                                                                                                                                         |
+| **mail**             | `mail-domain`, `-application`                                                                                                       | Accounts, envelopes, triage classes, digest composition.                                                                                                                                                                                        |
+| **feeds**            | `feeds-domain`, `-application`, `-infrastructure`                                                                                   | Feed subscriptions, interest profile, ranking, dedupe.                                                                                                                                                                                          |
+| **projects**         | `projects-domain`, `-application`, `-infrastructure`                                                                                | Watched repos, git and CI state, AI session summaries (Claude Code, Codex).                                                                                                                                                                     |
+| **notify**           | `notify-domain`, `-application`                                                                                                     | Delivery policy (quiet hours, focus, batching), channels (toast, voice, overlay, Today), cross-device dedupe.                                                                                                                                   |
+| **voice**            | `voice-domain`, `-application`, `-infrastructure`                                                                                   | Capture (cpal/WASAPI), VAD, dictation sessions, cleanup rules, dictionary, snippets, wake word gating.                                                                                                                                          |
+| **speech**           | `speech-domain`, `-application`                                                                                                     | TTS requests, mood → style mapping, playback queue, barge-in.                                                                                                                                                                                   |
+| **models**           | `models-domain`, `-application`, `-infrastructure`                                                                                  | Provider registry, routing policy (task × privacy × capability), model catalog, downloads with hash pinning.                                                                                                                                    |
+| **assistant**        | `assistant-domain`, `-application`                                                                                                  | Conversation, tool registry, planner loop, permissions and confirmations, taint tracking, memory notebook, routines.                                                                                                                            |
+| **actions**          | `actions-domain`, `-application`, `-infrastructure`                                                                                 | Tools that change the world: file cleanup with an undo journal, app launch, system toggles, timers.                                                                                                                                             |
+| **briefing**         | `briefing-application`                                                                                                              | Builds the Today view and the spoken morning briefing from the other contexts' read models.                                                                                                                                                     |
+| **sync**             | `sync-domain`, `-application`, `-infrastructure`                                                                                    | Peer discovery (mDNS, Tailscale), QUIC transport, op-log replication, presence.                                                                                                                                                                 |
+| **connectors**       | `connector-google`, `connector-msgraph`, `connector-imap`, `connector-caldav`, `connector-jmap`, `connector-feeds`, `connector-llm` | Adapters for mail, calendar, reminders, feeds, and LLM ports ([connectors](connectors.md)).                                                                                                                                                     |
+| **platform**         | `platform-ports` (application traits), `platform-windows` (infrastructure)                                                          | Global hotkeys (low-level hook for push-to-talk), selection capture (UI Automation, clipboard fallback), text injection, toasts, autostart, foreground app detection.                                                                           |
+| **inference**        | `infer-protocol` (shared message types), `infer-host` (binary)                                                                      | STT, TTS, VAD, and wake-word engines; llama-server supervision.                                                                                                                                                                                 |
+| **inference client** | `infer-client` (infrastructure)                                                                                                     | Implements the voice context\'s `SpeechToText` port and the speech context\'s `SpeechSynthesizer` port by talking to `infer-host`, so neither context depends on the other or on the models context.                                            |
+| **local API**        | `local-api` (replaces the starter's `http-api`)                                                                                     | Loopback HTTP for `headless` (QA, health, and diagnostics). Token-authenticated.                                                                                                                                                                |
+| **roots**            | `desktop`, `headless` (replaces the starter's `app`), `infer-host`, `native-host`, `mcp-server`                                     | Composition only.                                                                                                                                                                                                                               |
+
+The starter's example `tasks-*` crates, `http-api`, and `app` stay until issue [#003](../issues/003-replace-starter-example.md) replaces them with `reminders-*`, `local-api`, and `headless`. They keep every gate meaningful from day one.
+
+### Dependency rules (added to `arch.toml` as crates land)
+
+- `*-domain` → `kernel` and `kernel-time` only.
+- `*-application` → its own domain, `kernel`, other contexts' **domain** crates for shared value types, and `platform-ports` (the one shared application-layer crate: OS capabilities every context may need). Never another context's application crate: cross-context calls go through ports or events.
+- `*-infrastructure` and `connector-*` → application and domain crates; `store`.
+- Only `desktop` depends on `tauri`. Only `platform-windows` depends **directly** on the `windows` crate. Cross-platform crates that use it internally (`cpal`, `tauri`, `keyring`) are fine in infrastructure crates, so audio capture and playback (`cpal`) live in `voice-infrastructure` and `speech-infrastructure`. A direct-dependency rule in `xtask arch` enforces this ([#092](../issues/092-unsafe-and-ffi-policy.md)).
+- Only `infer-host` depends on whisper or sherpa bindings. ONNX Runtime (`ort`) is allowed in `infer-host` and in `voice-infrastructure`, for the CPU-only Silero VAD and wake-word models that must run in-process to meet the latency budget ([ADR 0007](adr/0007-model-runtimes.md)).
+- `unsafe` is allowed only in crates listed in ADR 0012's allowlist (`platform-windows`, `infer-host`), only in modules marked `#[expect(unsafe_code, reason = "...")]`, and every block carries a `// SAFETY:` comment ([ADR 0012](adr/0012-unsafe-and-ffi.md)).
+- Banned in domain and application crates: `tokio`, `reqwest`, `rusqlite`, `serde_json`, `tauri`, `windows`, `uuid`.
+
+## Cross-context communication
+
+- **Commands** go UI → Tauri command → application use case, typed end to end with `tauri-specta`. The generated TypeScript lives in `src/shared/ipc/`.
+- **Domain events** (for example `ReminderDue`, `MailDigestReady`, `DictationFinished`) are published on an in-process bus (`tokio::sync::broadcast`, with the typed envelope defined in `kernel`). Other contexts subscribe through application-layer handlers, and the desktop forwards a filtered subset to the webviews as Tauri events. The UI reads them with `useSyncExternalStore`; `useEffect` is banned by lint.
+- **Read models** for the Today view are queries over the store, not event replays, to keep startup fast.
+
+## Data and persistence
+
+- One SQLCipher database per user profile, `%APPDATA%\<app>\profile.db`. Its key is random per device and wrapped by DPAPI, optionally bound to Windows Hello. The seed is not needed for day-to-day unlock ([security](security.md)).
+- Each context owns its tables, and migrations live with its infrastructure crate. No context reads another's tables.
+- Every synced mutation is written twice in one transaction: the materialized row, and an **op** `(hlc, device_id, entity, field, value, sig)` encrypted with the current group content key. Replication ships ops; conflict resolution is last-writer-wins per field by HLC, with tombstones for deletes ([sync](sync.md), [ADR 0004](adr/0004-storage-and-replication.md)).
+- Not synced: model files, audio, caches, OAuth tokens (opt-in per account), device-local settings.
+- Audio is never written to disk unless the user turns on dictation history, which is then encrypted in the store.
+
+## Components
+
+| Document                                   | Covers                                                                                                       |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| [voice-and-speech.md](voice-and-speech.md) | Dictation pipeline, STT engines, hardware acceleration, TTS and moods, wake word, overlay timing             |
+| [assistant.md](assistant.md)               | Model router, tool loop, permissions, prompt-injection defenses, memory, proactive engine, routines          |
+| [connectors.md](connectors.md)             | Mail, calendar, reminders, feeds, AI providers: protocols, auth, and per-provider risks                      |
+| [sync.md](sync.md)                         | Identity, pairing, discovery, transport, replication, notification dedupe                                    |
+| [security.md](security.md)                 | Threat model, key hierarchy, storage encryption, permissions, supply chain                                   |
+| [os-integration.md](os-integration.md)     | Windows integration: hotkeys, selection, paste, overlay, browser context menu, toasts, autostart, Today mode |
+| [ui.md](ui.md)                             | Windows and entry points, React feature layout, IPC, state, design system, accessibility                     |
+| [adr/](adr/)                               | Decision records                                                                                             |
+
+## Repository layout (target)
+
+```
+crates/             Rust: contexts, connectors, platform, inference, roots (see table above)
+xtask/              Gate tooling (CRAP, arch, comments, mutation score, free port)
+src/                React UI, one folder per feature: <feature>/{domain,application,infrastructure,ui}
+  shared/           Cross-feature UI kit, IPC bindings (generated), brand constants
+extensions/browser/ MV3 extension (TypeScript), context menu "Read aloud ▸ mood"
+training/           Python: persona LLM and mood-TTS fine-tuning, evals (python-fastapi starter gates)
+models/             (git-ignored) local model cache for development
+features/core/      Gherkin for Rust (cucumber-rs, run in process against `headless`)
+features/ui/        Gherkin for UI (cucumber-js + Playwright against Vite with an IPC fake)
+qa/                 Human QA procedures and their scripted form (core: curl, ui: Playwright)
+docs/               Product, architecture, ADRs, issues, brand, design
+```
+
+## Quality gates
+
+Unchanged from the starters, combined in one `Makefile` ([`docs/engineering/gate-contract.md`](../engineering/gate-contract.md)): `make check` = `fmt-check` + both halves of lint, typecheck, arch, coverage ≥ 90%, CRAP ≤ 6, and acceptance. `make gauntlet` adds 100% mutation score and QA. Composition roots (`desktop`, `headless` main, `infer-host` main) are excluded from coverage and mutation, so they must stay wiring-only. Exceptions to `deny.toml` are listed in [ADR 0003](adr/0003-supply-chain-exceptions.md).
+
+Testing notes per layer:
+
+- **Domain:** pure unit tests and property tests (recurrence, HLC merge, mood mapping, cleanup plans).
+- **Application:** use cases with in-memory fakes for every port. Fakes live in `*-application` behind `#[cfg(test)]` or in a `testkit` module.
+- **Infrastructure:** contract tests run against fakes and, where available, real local services (Dovecot and Radicale in containers for IMAP and CalDAV, a recorded HTTP fixture for Graph and Google).
+- **Inference:** golden-audio tests with tiny models (whisper `tiny.en`, Kokoro) behind a `slow` feature; latency budgets asserted in a separate `bench` job, not in `make check`.
+- **UI:** components with Testing Library. Acceptance drives the real UI in Chromium against an IPC fake injected at the composition root (`src/main.tsx` picks the Tauri adapter or the fake).

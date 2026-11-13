@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Lampion app icon">
+  <title>Lampion app icon</title>
+  <defs>
+    <linearGradient id="p" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2D3268"/><stop offset="1" stop-color="#1A1D3D"/></linearGradient>
+    <radialGradient id="g" cx=".5" cy=".53" r=".5"><stop offset="0" stop-color="#FFB81C" stop-opacity=".55"/><stop offset=".6" stop-color="#FFB81C" stop-opacity=".12"/><stop offset="1" stop-color="#FFB81C" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect x="16" y="16" width="224" height="224" rx="48" fill="url(#p)"/>
+  <circle cx="128" cy="134" r="104" fill="url(#g)"/>
+  <g transform="translate(41.6 41.6) scale(3.6)">
+    <path d="M24 1.5V7" stroke="#D9820B" stroke-width="2.5" stroke-linecap="round"/>
+    <rect x="16.5" y="6.75" width="15" height="5.5" rx="1.75" fill="#D9820B" stroke="#1F2347" stroke-width="2"/>
+    <rect x="18.5" y="37.75" width="11" height="5.5" rx="1.75" fill="#D9820B" stroke="#1F2347" stroke-width="2"/>
+    <ellipse cx="24" cy="25" rx="18" ry="14" fill="#FFB81C" stroke="#1F2347" stroke-width="2.5"/>
+    <ellipse cx="24" cy="25.5" rx="8.5" ry="7" fill="#FFF1C7"/>
+    <path d="M8.5 19.25Q24 22 39.5 19.25M8.5 30.75Q24 33.5 39.5 30.75" fill="none" stroke="#C76E00" stroke-width="1.6" stroke-linecap="round" opacity=".8"/>
+  </g>
+</svg>

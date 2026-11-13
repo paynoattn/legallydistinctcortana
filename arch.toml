@@ -1,0 +1,44 @@
+# Dependency rules, checked by `make arch` (cargo xtask arch) against `cargo metadata`.
+#
+# Layering: http-api -> application -> domain; infrastructure -> application, domain.
+# Only the composition roots (`app` headless, `desktop` Tauri) wire infrastructure into
+# application. Only `desktop` may depend on tauri.
+#
+#   allow = workspace crates this crate may depend on (normal, dev, or build).
+#   ban   = external crates this crate must not depend on, directly or transitively
+#           through normal/build dependencies.
+# Every workspace crate must appear here. Fix violations in code, not in this file.
+
+no_dependents = ["app", "desktop", "xtask"]
+
+[crates.tasks-domain]
+allow = []
+ban = [
+  "axum", "hyper", "tower", "tower-http", "tokio", "serde_json", "sqlx", "reqwest",
+  "uuid", "tracing", "tauri",
+]
+
+[crates.tasks-application]
+allow = ["tasks-domain"]
+ban = [
+  "axum", "hyper", "tower", "tower-http", "tokio", "serde_json", "sqlx", "reqwest", "uuid",
+  "tauri",
+]
+
+[crates.tasks-infrastructure]
+allow = ["tasks-application", "tasks-domain"]
+ban = ["axum", "hyper", "tower", "tower-http", "tauri"]
+
+[crates.http-api]
+allow = ["tasks-application", "tasks-domain"]
+ban = ["sqlx", "reqwest", "uuid", "tauri"]
+
+[crates.app]
+allow = ["http-api", "tasks-application", "tasks-domain", "tasks-infrastructure"]
+
+# Tauri shell: composition root for the desktop UI host. Only it may depend on tauri.
+[crates.desktop]
+allow = []
+
+[crates.xtask]
+allow = []

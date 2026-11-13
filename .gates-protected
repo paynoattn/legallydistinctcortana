@@ -1,0 +1,51 @@
+# Gate configuration. Agents must ask a human before editing any file matching these
+# globs (bash patterns, relative to this directory; `*` also matches `/`).
+
+# Shared
+Makefile
+.gates-protected
+AGENTS.md
+CLAUDE.md
+.editorconfig
+.cursor/**
+.claude/**
+.githooks/**
+scripts/agent-hooks/**
+.github/**
+
+# Rust
+Cargo.toml
+crates/*/Cargo.toml
+xtask/**
+rust-toolchain.toml
+rustfmt.toml
+clippy.toml
+deny.toml
+arch.toml
+.cargo/**
+scripts/mutate-rs.sh
+scripts/qa-rs.sh
+
+# Tauri security surface: CSP and IPC permissions are gates, not settings.
+crates/desktop/tauri.conf.json
+crates/desktop/capabilities/**
+
+# UI
+eslint.config.mjs
+eslint.local-rules.mjs
+tsconfig*.json
+src/tsconfig.json
+.prettierrc
+.prettierignore
+.dependency-cruiser.cjs
+stryker.config.*
+vite.config.*
+cucumber.*
+knip.*
+scripts/crap.ts
+scripts/bundle-budget.ts
+scripts/mutate-ui.sh
+scripts/qa-ui.sh
+package.json
+pnpm-workspace.yaml
+.nvmrc

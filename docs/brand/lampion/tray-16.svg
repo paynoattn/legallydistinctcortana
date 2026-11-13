@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" role="img" aria-label="Lampion tray icon">
+  <title>Lampion tray icon</title>
+  <rect x="5" y="1" width="6" height="2.5" rx=".75" fill="#D9820B"/>
+  <rect x="6" y="12.5" width="4" height="2.5" rx=".75" fill="#D9820B"/>
+  <ellipse cx="8" cy="8" rx="6.75" ry="5.25" fill="#FFB81C" stroke="#1F2347" stroke-width="1"/>
+  <ellipse cx="8" cy="8.25" rx="2.75" ry="2.25" fill="#FFF1C7"/>
+</svg>

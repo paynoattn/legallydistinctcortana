@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lampion overlay states storyboard</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+  html, body { margin: 0; }
+  body { background: #ECEDF4; color: var(--dusk); font-family: var(--font-ui); width: 1920px; }
+  header { display: flex; align-items: baseline; gap: 24px; padding: 28px 40px 18px; }
+  h1 { font: 400 30px/1.1 var(--font-display); margin: 0; }
+  header p { margin: 0; font-size: 16px; max-width: 90ch; }
+  .strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 16px; padding: 0 40px 34px; }
+  figure { margin: 0; }
+  .crop { position: relative; width: 248px; height: 248px; overflow: hidden; border-radius: 10px; box-shadow: 0 0 0 1px rgb(31 35 71 / .14); background: #ccd; }
+  .crop iframe { position: absolute; border: 0; width: 1920px; height: 1080px; left: -1672px; top: -832px; pointer-events: none; }
+  figcaption { padding: 12px 2px 0; }
+  figcaption b { display: block; font: 400 21px/1.2 var(--font-display); }
+  figcaption .when { display: block; font-weight: 700; font-size: 15px; margin: 4px 0 4px; color: var(--plum); }
+  figcaption span { display: block; font-size: 14.5px; line-height: 1.42; }
+  .arrow { color: var(--mist); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Overlay states</h1>
+  <p>Bottom-right corner of a 1920 × 1080 desktop at 100% scale, rendered at 2×. The dashed square is the 160 × 160 overlay window; it is transparent and click-through except in Error. A faint copy marks the far end of a swing or shake.</p>
+</header>
+<div class="strip">
+  <figure><div class="crop"><iframe src="01-overlay.html?state=hidden&bounds=1" title="Hidden"></iframe></div>
+    <figcaption><b>Hidden</b><span class="when">Idle</span><span>Nothing on screen. The window is pre-created and hidden; the tray lantern stays.</span></figcaption></figure>
+  <figure><div class="crop"><iframe src="01-overlay.html?state=armed&bounds=1" title="Armed"></iframe></div>
+    <figcaption><b>Armed</b><span class="when">≤ 50 ms after key down</span><span>The lantern scales in over 140 ms with a faint halo. Optional soft tick.</span></figcaption></figure>
+  <figure><div class="crop"><iframe src="01-overlay.html?state=listening&bounds=1" title="Listening"></iframe></div>
+    <figcaption><b>Listening</b><span class="when">First audio frame, ≤ 30 ms</span><span>Core scales 1.0 to 1.35 with your voice (RMS at 30 Hz, 60 ms smoothing); the halo follows.</span></figcaption></figure>
+  <figure><div class="crop"><iframe src="01-overlay.html?state=thinking&bounds=1" title="Thinking"></iframe></div>
+    <figcaption><b>Thinking</b><span class="when">On release or end of speech</span><span>Swings ±8° from the hanger on a 1.4 s cycle; core dims to 70%.</span></figcaption></figure>
+  <figure><div class="crop"><iframe src="01-overlay.html?state=inserted&bounds=1" title="Inserted"></iframe></div>
+    <figcaption><b>Inserted</b><span class="when">≤ 500 ms after release (GPU)</span><span>One bright pulse and a check, then fades out over 600 ms.</span></figcaption></figure>
+  <figure><div class="crop"><iframe src="01-overlay.html?state=speaking&mood=calm&bounds=1" title="Speaking, calm"></iframe></div>
+    <figcaption><b>Speaking</b><span class="when">First audio ≤ 300 ms</span><span>Core follows the speech; a ring per phrase. The mood tints the halo (here Calm).</span></figcaption></figure>
+  <figure><div class="crop"><iframe src="01-overlay.html?state=error&bounds=1" title="Error"></iframe></div>
+    <figcaption><b>Error</b><span class="when">On failure; stays 6 s or until clicked</span><span>Core dims, one ±3° shake, a one-line reason and the fix.</span></figcaption></figure>
+</div>
+</body>
+</html>

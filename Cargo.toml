@@ -1,0 +1,87 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "xtask"]
+default-members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+tasks-domain = { path = "crates/tasks-domain" }
+tasks-application = { path = "crates/tasks-application" }
+tasks-infrastructure = { path = "crates/tasks-infrastructure" }
+http-api = { path = "crates/http-api" }
+
+# Desktop shell (Tauri 2). See docs/architecture/overview.md for the target crate layout.
+tauri = { version = "2", features = [] }
+tauri-build = { version = "2", features = [] }
+
+# No default features: the default `tower-log` turns on `tracing/log`, whose log-compat
+# branches make every `tracing::info!` call score 8 on clippy's cognitive_complexity.
+axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio", "tracing"] }
+cucumber = "0.23.0"
+http-body-util = "0.1.5"
+proc-macro2 = { version = "1.0.107", features = ["span-locations"] }
+quote = "1.0.47"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+syn = { version = "3.0.9", features = ["full", "visit"] }
+thiserror = "2.0.21"
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+toml = "1.2.1"
+tower = { version = "0.5.3", features = ["util"] }
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
+uuid = { version = "1.29.1", features = ["v4"] }
+
+# Every crate opts in with `[lints] workspace = true`. `make lint` runs clippy with
+# `-D warnings`, so "warn" here is still a hard gate; see README "Lints" for why some
+# lints are warn rather than deny.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+rust_2018_idioms = { level = "warn", priority = -1 }
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+unused_qualifications = "warn"
+let_underscore_drop = "warn"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
+# The lockfile has duplicate versions of transitive deps (e.g. windows-sys) that we
+# cannot fix from here. cargo-deny's `bans.multiple-versions` reports them instead.
+multiple_crate_versions = "allow"
+
+cognitive_complexity = "deny"
+
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+indexing_slicing = "deny"
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+string_slice = "deny"
+as_conversions = "deny"
+shadow_unrelated = "deny"
+missing_assert_message = "deny"
+clone_on_ref_ptr = "deny"
+rc_buffer = "deny"
+undocumented_unsafe_blocks = "deny"
+unused_result_ok = "deny"
+if_then_some_else_none = "deny"
+
+# Used by cargo-mutants (see .cargo/mutants.toml): builds once per mutant, so trim debug info.
+[profile.mutants]
+inherits = "test"
+debug = "none"

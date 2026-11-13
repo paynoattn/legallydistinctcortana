@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lampion artboard 01: the voice indicator</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+  html, body { margin: 0; }
+  body {
+    background: #D9DBE7;
+    font-family: var(--font-ui);
+    color: var(--dusk);
+    overflow-x: hidden;
+  }
+  #stage { width: 1920px; height: 1080px; transform-origin: 0 0; }
+  #screen {
+    position: relative; width: 1920px; height: 1080px; overflow: hidden;
+    font-family: var(--font-os); font-size: 14px; color: #1B1B1B;
+    background: #C9D2E4;
+  }
+  /* ---------- wallpaper: quiet layered hills at first light ---------- */
+  .wallpaper { position: absolute; inset: 0; }
+  .desk-icon { position: absolute; left: 14px; top: 12px; width: 76px; text-align: center; color: #fff; font-size: 12px; text-shadow: 0 1px 2px rgb(0 0 0 / .5); }
+  .desk-icon svg { display: block; margin: 0 auto 4px; }
+
+  /* ---------- windows (Windows 11 light) ---------- */
+  .win {
+    position: absolute; border-radius: var(--r-window); overflow: hidden;
+    background: #F3F3F3; border: 1px solid rgb(0 0 0 / .14);
+    box-shadow: 0 2px 6px rgb(0 0 0 / .1), 0 24px 56px rgb(0 0 0 / .26);
+  }
+  .titlebar { height: 40px; display: flex; align-items: center; gap: 10px; padding-left: 14px; font-size: 12px; color: #1B1B1B; }
+  .titlebar .title { flex: 1; }
+  .caption { display: flex; height: 100%; }
+  .caption span { width: 46px; display: grid; place-items: center; }
+  .caption svg { width: 10px; height: 10px; }
+  .win.back { left: 96px; top: 64px; width: 880px; height: 560px; box-shadow: 0 2px 8px rgb(0 0 0 / .12); }
+  .win.back .titlebar { color: #6B6B6B; background: #EDEDF0; }
+  .explorer { display: grid; grid-template-columns: 190px 1fr; height: calc(100% - 40px); background: #FAFAFA; }
+  .explorer .nav { background: #F3F3F3; padding: 10px 8px; color: #555; font-size: 13px; line-height: 30px; }
+  .explorer .files { padding: 10px 18px; color: #666; font-size: 13px; line-height: 32px; }
+
+  .win.chat { left: 420px; top: 150px; width: 1120px; height: 740px; }
+  .chat-body { display: grid; grid-template-columns: 300px 1fr; height: calc(100% - 40px); }
+  .convos { background: #F3F3F3; border-right: 1px solid #E3E3E3; padding: 6px 10px; }
+  .search { margin: 6px 4px 12px; height: 34px; border-radius: 6px; background: #FFF; border: 1px solid #E0E0E0; border-bottom-color: #C8C8C8; display: flex; align-items: center; padding: 0 12px; color: #737373; font-size: 13px; }
+  .convo { display: grid; grid-template-columns: 40px 1fr auto; gap: 10px; align-items: center; padding: 10px 10px; border-radius: 6px; }
+  .convo.active { background: #E6E9F0; }
+  .convo b { font-weight: 600; font-size: 14px; display: block; }
+  .convo small { color: #616161; font-size: 12.5px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .convo time { font-size: 12px; color: #616161; align-self: start; padding-top: 3px; }
+  .av { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-size: 14px; font-weight: 600; color: #fff; }
+  .thread { display: grid; grid-template-rows: 60px 1fr auto; background: #FFFFFF; min-height: 0; }
+  .thread header { display: flex; align-items: center; gap: 12px; padding: 0 22px; border-bottom: 1px solid #ECECEC; }
+  .thread header b { font-size: 15px; font-weight: 600; }
+  .thread header small { color: #616161; font-size: 12.5px; }
+  .msgs { padding: 22px 28px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; justify-content: flex-end; }
+  .day { align-self: center; color: #616161; font-size: 12px; margin: 6px 0 10px; }
+  .bubble { max-width: 520px; padding: 9px 14px; border-radius: 14px; font-size: 14.5px; line-height: 1.42; }
+  .bubble.in { align-self: flex-start; background: #F0F1F4; border-bottom-left-radius: 4px; }
+  .bubble.out { align-self: flex-end; background: #2B5FD9; color: #fff; border-bottom-right-radius: 4px; }
+  .stamp { font-size: 11.5px; color: #616161; }
+  .stamp.out { align-self: flex-end; }
+  .composer { padding: 14px 22px 20px; }
+  .compose {
+    min-height: 48px; border-radius: 8px; background: #FAFAFA;
+    border: 1px solid #DADADA; border-bottom: 2px solid #2B5FD9;
+    display: flex; align-items: center; gap: 12px; padding: 10px 14px; font-size: 15px; line-height: 1.45;
+  }
+  .compose .text { flex: 1; white-space: pre-wrap; }
+  .compose .ph { color: #6E6E6E; }
+  .caret { display: inline-block; width: 1.5px; height: 1.2em; background: #1B1B1B; vertical-align: -0.2em; margin-left: 1px; animation: blink 1.06s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .compose .tools { display: flex; gap: 14px; color: #5F5F5F; }
+  .compose .tools svg { width: 20px; height: 20px; }
+  .compose .text .fresh { background: rgb(43 95 217 / .12); border-radius: 3px; transition: background 1.2s ease; }
+  .compose .text .fresh.settled { background: transparent; }
+
+  /* ---------- taskbar (Windows 11 light) ---------- */
+  .taskbar {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 48px;
+    background: rgb(238 240 246 / .86); backdrop-filter: blur(30px) saturate(1.4);
+    border-top: 1px solid rgb(0 0 0 / .08);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .tb-center { display: flex; gap: 4px; align-items: center; }
+  .tb-btn { width: 40px; height: 40px; border-radius: 5px; display: grid; place-items: center; position: relative; }
+  .tb-btn.running::after { content: ""; position: absolute; bottom: 2px; width: 6px; height: 3px; border-radius: 2px; background: #8A8A8A; }
+  .tb-btn.active { background: rgb(255 255 255 / .7); box-shadow: inset 0 0 0 1px rgb(0 0 0 / .05); }
+  .tb-btn.active::after { width: 16px; background: #2B5FD9; }
+  .tb-search { width: 200px; height: 34px; border-radius: 17px; background: #FFF; border: 1px solid #E2E2E2; display: flex; align-items: center; gap: 10px; padding: 0 12px; color: #616161; font-size: 13px; margin: 0 4px; }
+  .tray { position: absolute; right: 8px; top: 0; bottom: 0; display: flex; align-items: center; gap: 2px; font-size: 12px; }
+  .tray .chev, .tray .lamp, .tray .quick, .tray .clock, .tray .bell { height: 40px; border-radius: 5px; display: flex; align-items: center; justify-content: center; }
+  .tray .chev { width: 28px; }
+  .tray .lamp { width: 32px; position: relative; }
+  .tray .lamp::before { content: ""; position: absolute; width: 26px; height: 26px; border-radius: 50%; background: radial-gradient(circle, rgb(255 184 28 / .75), rgb(255 184 28 / 0) 70%); opacity: 0; transition: opacity 120ms ease-out; }
+  .tray .lamp.flick::before { opacity: 1; transition: none; }
+  .tray .lamp img { position: relative; }
+  .tray .quick { gap: 10px; padding: 0 10px; }
+  .tray .clock { flex-direction: column; align-items: flex-end; padding: 0 10px; line-height: 1.35; }
+  .tray .bell { width: 30px; }
+
+  /* ---------- the overlay window ---------- */
+  #overlay {
+    position: absolute; width: 160px; height: 160px;
+    right: 16px; bottom: calc(48px + 16px);
+    pointer-events: none;
+  }
+  #overlay.bounds { outline: 1px dashed rgb(31 35 71 / .55); outline-offset: -1px; background: rgb(255 255 255 / .06); }
+  #overlay.bounds::before { content: "Overlay window, 160 × 160"; position: absolute; top: -22px; right: 0; font: 600 11px var(--font-ui); color: var(--dusk); background: rgb(255 255 255 / .8); padding: 2px 6px; border-radius: 4px; }
+  .static #overlay.bounds::before { display: none; }
+  #mark { position: absolute; left: 48px; top: 40px; }
+  .err {
+    position: absolute; left: 4px; right: 4px; bottom: 6px;
+    background: var(--dusk); color: var(--paper); border-radius: 10px;
+    padding: 6px 10px 7px; font: 500 12.5px/1.35 var(--font-ui); text-align: center;
+    opacity: 0; transform: translateY(4px); transition: opacity 160ms var(--ease-out), transform 160ms var(--ease-out);
+    pointer-events: none;
+    box-shadow: 0 6px 18px rgb(31 35 71 / .3);
+  }
+  .err a { color: var(--glow); text-underline-offset: 2px; font-weight: 700; cursor: pointer; pointer-events: auto; }
+  .err a:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; border-radius: 3px; }
+  #overlay.is-error { pointer-events: auto; }
+  #overlay.is-error .err { opacity: 1; transform: none; pointer-events: auto; }
+  .reduce-motion .err { transform: none; }
+
+  /* mic picker (stands in for Windows' sound output/input flyout) */
+  .flyout {
+    position: absolute; right: 12px; bottom: 60px; width: 340px;
+    background: rgb(243 243 243 / .94); backdrop-filter: blur(30px);
+    border: 1px solid rgb(0 0 0 / .1); border-radius: var(--r-menu);
+    box-shadow: 0 8px 32px rgb(0 0 0 / .22); padding: 14px; font-size: 14px;
+    display: none;
+  }
+  .flyout.open { display: block; }
+  .flyout h2 { font: 600 14px var(--font-os); margin: 2px 4px 10px; }
+  .flyout button { all: unset; box-sizing: border-box; display: flex; width: 100%; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 6px; cursor: pointer; }
+  .flyout button:hover, .flyout button:focus-visible { background: rgb(0 0 0 / .05); }
+  .flyout button:focus-visible { outline: 2px solid #1B1B1B; }
+  .flyout small { display: block; color: #5E5E5E; font-size: 12px; }
+
+  /* ---------- control strip (outside the screen) ---------- */
+  #strip {
+    width: min(1920px, 100%); box-sizing: border-box;
+    padding: 18px 28px 26px; display: grid; gap: 14px;
+    grid-template-columns: minmax(280px, 1.1fr) 2fr;
+    align-items: start;
+  }
+  #strip h1 { font: 400 26px/1.15 var(--font-display); margin: 0 0 6px; }
+  #strip p { margin: 0; font-size: 15px; line-height: 1.5; max-width: 60ch; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 22px; }
+  .group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .group > span { font-size: 14px; font-weight: 700; margin-right: 2px; }
+  .ctl {
+    font: 600 14px var(--font-ui); color: var(--dusk); background: #F6F6FB;
+    border: 1.5px solid rgb(31 35 71 / .35); border-radius: var(--r-chip); padding: 7px 12px; cursor: pointer;
+  }
+  .ctl:hover { border-color: var(--dusk); }
+  .ctl[aria-pressed="true"] { background: var(--dusk); color: var(--paper); border-color: var(--dusk); }
+  .ctl:focus-visible { outline: 3px solid var(--plum); outline-offset: 2px; }
+  .readout { font-size: 15px; display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  .readout strong { font-weight: 700; }
+  kbd { font: 700 13px var(--font-ui); border: 1.5px solid rgb(31 35 71 / .4); border-bottom-width: 3px; border-radius: 5px; padding: 1px 7px; background: #fff; }
+  kbd.down { background: var(--dusk); color: var(--paper); border-color: var(--dusk); }
+  .static #strip { display: none; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="screen" aria-label="Simulated Windows 11 desktop">
+    <svg class="wallpaper" viewBox="0 0 1920 1080" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#B9C3DC"/><stop offset=".55" stop-color="#DCDCEA"/><stop offset="1" stop-color="#EEE3DE"/>
+        </linearGradient>
+      </defs>
+      <rect width="1920" height="1080" fill="url(#sky)"/>
+      <path d="M0 700 C 260 620 520 640 760 690 S 1260 760 1500 680 S 1820 600 1920 640 V1080 H0Z" fill="#A9B3CD" opacity=".75"/>
+      <path d="M0 800 C 300 730 600 760 900 800 S 1400 860 1700 790 S 1880 760 1920 770 V1080 H0Z" fill="#8F9AB8" opacity=".8"/>
+      <path d="M0 900 C 320 850 700 880 1000 910 S 1500 960 1920 890 V1080 H0Z" fill="#76819F"/>
+      <path d="M0 990 C 400 960 900 980 1300 1000 S 1760 1000 1920 980 V1080 H0Z" fill="#646E8C"/>
+    </svg>
+    <div class="desk-icon">
+      <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><path d="M11 12h18l-2 22H13z" fill="#E9EEF6" stroke="#8B97AC"/><rect x="9" y="8" width="22" height="4" rx="1" fill="#C9D3E3" stroke="#8B97AC"/></svg>
+      Recycle Bin
+    </div>
+
+    <div class="win back" aria-hidden="true">
+      <div class="titlebar"><span class="title">Downloads</span><div class="caption"><span><svg viewBox="0 0 10 10"><path d="M0 5h10" stroke="#777"/></svg></span><span><svg viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9" fill="none" stroke="#777"/></svg></span><span><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="#777"/></svg></span></div></div>
+      <div class="explorer"><div class="nav">Home<br>Gallery<br>Desktop<br><b>Downloads</b><br>Documents<br>Pictures</div>
+        <div class="files">whisper-large-v3-turbo-q5.bin<br>rack-measurements.pdf<br>lampion-0.3.1-x64-setup.exe<br>switch-manual-10gbe.pdf<br>IMG_4412.HEIC</div></div>
+    </div>
+
+    <div class="win chat" role="application" aria-label="Chat app with focus">
+      <div class="titlebar"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5A1.5 1.5 0 0 1 3.5 2h9A1.5 1.5 0 0 1 14 3.5v6a1.5 1.5 0 0 1-1.5 1.5H7l-3 3v-3h-.5A1.5 1.5 0 0 1 2 9.5z" fill="#2B5FD9"/></svg><span class="title">Chat</span><div class="caption"><span><svg viewBox="0 0 10 10"><path d="M0 5h10" stroke="#333"/></svg></span><span><svg viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9" fill="none" stroke="#333"/></svg></span><span><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="#333"/></svg></span></div></div>
+      <div class="chat-body">
+        <div class="convos">
+          <div class="search">Search</div>
+          <div class="convo active"><div class="av" style="background:#4C7A6B">AO</div><div><b>Alex Okafor</b><small>Also, how deep is your rack?</small></div><time>8:31</time></div>
+          <div class="convo"><div class="av" style="background:#7B5EA7">HL</div><div><b>Home lab crew</b><small>Jules: the UPS finally arrived</small></div><time>7:58</time></div>
+          <div class="convo"><div class="av" style="background:#B0645A">DW</div><div><b>Dana Whitfield</b><small>Thanks for the notes yesterday</small></div><time>Wed</time></div>
+          <div class="convo"><div class="av" style="background:#5A6FB0">M</div><div><b>Mum</b><small>Sunday lunch at 1?</small></div><time>Tue</time></div>
+        </div>
+        <div class="thread">
+          <header><div class="av" style="background:#4C7A6B">AO</div><div><b>Alex Okafor</b><br><small>Active now</small></div></header>
+          <div class="msgs" id="msgs">
+            <div class="day">Yesterday</div>
+            <div class="bubble out">Did the UPS work out for Jules?</div>
+            <div class="bubble in">Yes, after a firmware update. He's very smug about it.</div>
+            <div class="bubble out">Ha. Tell him the rack has room when he's ready</div>
+            <div class="stamp out">6:12 PM</div>
+            <div class="day">Today</div>
+            <div class="bubble in">Morning! Still want the spare 10 GbE switch? I can bring it on Saturday.</div>
+            <div class="bubble in">Also, how deep is your rack? Mine's 60 cm and the switch barely fits.</div>
+            <div class="stamp">8:31 AM</div>
+          </div>
+          <div class="composer">
+            <div class="compose" id="compose" aria-label="Message to Alex Okafor"><span class="text" id="composeText"></span><span class="tools" aria-hidden="true">
+              <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="7.2" cy="8.2" r="1" fill="currentColor"/><circle cx="12.8" cy="8.2" r="1" fill="currentColor"/><path d="M6.5 12q3.5 3 7 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              <svg viewBox="0 0 20 20"><path d="M3 10l14-6-5 13-2.5-5.5z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="taskbar" aria-hidden="true">
+      <div class="tb-center">
+        <div class="tb-btn"><svg width="22" height="22" viewBox="0 0 22 22"><rect x="1" y="1" width="9.5" height="9.5" rx="1.2" fill="#2F7AE5"/><rect x="11.5" y="1" width="9.5" height="9.5" rx="1.2" fill="#2F7AE5"/><rect x="1" y="11.5" width="9.5" height="9.5" rx="1.2" fill="#2F7AE5"/><rect x="11.5" y="11.5" width="9.5" height="9.5" rx="1.2" fill="#2F7AE5"/></svg></div>
+        <div class="tb-search"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="6.5" cy="6.5" r="5" fill="none" stroke="#333" stroke-width="1.4"/><path d="M10.2 10.2L15 15" stroke="#333" stroke-width="1.4" stroke-linecap="round"/></svg>Search</div>
+        <div class="tb-btn"><svg width="22" height="22" viewBox="0 0 22 22"><rect x="2" y="4" width="11" height="10" rx="1.5" fill="#fff" stroke="#444"/><rect x="9" y="8" width="11" height="10" rx="1.5" fill="#fff" stroke="#444"/></svg></div>
+        <div class="tb-btn running"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M2 6.5A1.5 1.5 0 0 1 3.5 5h6l2 2h9A1.5 1.5 0 0 1 22 8.5v10a1.5 1.5 0 0 1-1.5 1.5h-17A1.5 1.5 0 0 1 2 18.5z" fill="#F2C14E"/><path d="M2 10h20v8.5a1.5 1.5 0 0 1-1.5 1.5h-17A1.5 1.5 0 0 1 2 18.5z" fill="#F7D57A"/></svg></div>
+        <div class="tb-btn running"><svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#3A8FD6"/><path d="M2 12h20M12 2c3 3 3 17 0 20M12 2c-3 3-3 17 0 20" stroke="#fff" stroke-width="1.2" fill="none"/></svg></div>
+        <div class="tb-btn running active"><svg width="24" height="24" viewBox="0 0 16 16"><path d="M2 3.5A1.5 1.5 0 0 1 3.5 2h9A1.5 1.5 0 0 1 14 3.5v6a1.5 1.5 0 0 1-1.5 1.5H7l-3 3v-3h-.5A1.5 1.5 0 0 1 2 9.5z" fill="#2B5FD9"/></svg></div>
+        <div class="tb-btn"><svg width="24" height="24" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2.5" fill="#2D2D30"/><path d="M6 9l3 3-3 3M11 15h6" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></div>
+        <div class="tb-btn"><svg width="24" height="24" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3" fill="#5F6B8A"/><path d="M7 8h10M7 12h10M7 16h6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+      </div>
+      <div class="tray">
+        <div class="chev"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 8l4-4 4 4" stroke="#333" fill="none" stroke-width="1.3"/></svg></div>
+        <div class="lamp" id="trayLamp" title="Lampion"><img src="../../brand/lampion/tray-16.svg" width="16" height="16" alt=""></div>
+        <div class="quick">
+          <svg width="16" height="16" viewBox="0 0 16 16"><path d="M1 6a10 10 0 0 1 14 0M3.5 8.6a6.4 6.4 0 0 1 9 0M6 11.2a2.8 2.8 0 0 1 4 0" stroke="#1B1B1B" fill="none" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="13.5" r="1" fill="#1B1B1B"/></svg>
+          <svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 6h3l4-3v10l-4-3H2z" fill="none" stroke="#1B1B1B" stroke-width="1.2" stroke-linejoin="round"/><path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.6a6 6 0 0 1 0 8.8" stroke="#1B1B1B" fill="none" stroke-width="1.2" stroke-linecap="round"/></svg>
+          <svg width="20" height="16" viewBox="0 0 20 16"><rect x="1" y="4" width="16" height="8" rx="2" fill="none" stroke="#1B1B1B" stroke-width="1.2"/><rect x="3" y="6" width="10" height="4" rx="1" fill="#1B1B1B"/><rect x="17.5" y="6.5" width="1.5" height="3" rx=".5" fill="#1B1B1B"/></svg>
+        </div>
+        <div class="clock"><span id="clockTime">8:47 AM</span><span>11/12/2026</span></div>
+        <div class="bell"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 2a4 4 0 0 0-4 4v3l-1.5 2.5h11L12 9V6a4 4 0 0 0-4-4zM6.5 13.5a1.5 1.5 0 0 0 3 0" fill="none" stroke="#1B1B1B" stroke-width="1.2" stroke-linejoin="round"/></svg></div>
+      </div>
+    </div>
+
+    <div id="overlay" aria-hidden="true">
+      <div id="mark"></div>
+      <div class="err" id="err">Microphone not found.<br><a id="fix" tabindex="-1">Choose a mic</a></div>
+    </div>
+
+    <div class="flyout" id="flyout" role="dialog" aria-label="Choose a microphone">
+      <h2>Choose a microphone</h2>
+      <button data-mic="Microphone Array (Realtek Audio)"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><rect x="6" y="1.5" width="6" height="10" rx="3" fill="none" stroke="#1B1B1B" stroke-width="1.3"/><path d="M3.5 8.5a5.5 5.5 0 0 0 11 0M9 14v2.5" stroke="#1B1B1B" fill="none" stroke-width="1.3" stroke-linecap="round"/></svg><span>Microphone Array<small>Realtek Audio, built in</small></span></button>
+      <button data-mic="Jabra Evolve2 30 (USB)"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 10V8a6 6 0 0 1 12 0v2" fill="none" stroke="#1B1B1B" stroke-width="1.3"/><rect x="2" y="9.5" width="3" height="5" rx="1" fill="#1B1B1B"/><rect x="13" y="9.5" width="3" height="5" rx="1" fill="#1B1B1B"/></svg><span>Headset microphone<small>USB headset, unplugged 2 min ago</small></span></button>
+    </div>
+  </div>
+</div>
+
+<section id="strip" aria-label="Demo controls">
+  <div>
+    <h1>The voice indicator</h1>
+    <p>Hold <kbd id="kRC">Right Ctrl</kbd> (or <kbd id="kSp">Space</kbd> held) to dictate into the chat box, then release. Other keys type into the box; while Lampion is idle each keystroke gives the tray lantern a tiny flicker. The overlay never takes focus.</p>
+  </div>
+  <div style="display:grid;gap:14px">
+    <div class="controls">
+      <div class="group"><span>Speak</span>
+        <button class="ctl" data-speak="alert">Alert</button>
+        <button class="ctl" data-speak="angry">Angry</button>
+        <button class="ctl" data-speak="calm">Calm</button>
+      </div>
+      <div class="group"><span>Fail</span><button class="ctl" id="btnError">Microphone missing</button></div>
+      <div class="group"><span>Input</span><button class="ctl" id="btnMic" aria-pressed="false">Use my mic</button></div>
+      <div class="group"><span>View</span>
+        <button class="ctl" id="btnReduce" aria-pressed="false">Reduce motion</button>
+        <button class="ctl" id="btnResting" aria-pressed="false">Resting lantern at idle</button>
+        <button class="ctl" id="btnBounds" aria-pressed="false">Show overlay bounds</button>
+        <button class="ctl" id="btnDemo">Replay demo</button>
+      </div>
+    </div>
+    <div class="readout" aria-live="polite"><span>State: <strong id="stateName">Hidden</strong></span><span id="note">Target app: chat, so the trailing period is dropped.</span></div>
+  </div>
+</section>
+
+<script src="mark.js"></script>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const STATIC = q.has("static") || q.has("state");
+  if (STATIC) document.body.classList.add("static");
+  if (q.get("reduce") === "1" || Lampion.prefersReduced()) document.documentElement.classList.add("reduce-motion");
+
+  const stage = document.getElementById("stage");
+  const strip = document.getElementById("strip");
+  function fit() {
+    if (STATIC) { stage.style.transform = ""; document.body.style.height = ""; return; }
+    const avail = Math.max(320, innerHeight - strip.offsetHeight);
+    const s = Math.min(innerWidth / 1920, avail / 1080, 1);
+    stage.style.transform = `scale(${s})`;
+    stage.style.marginBottom = `${1080 * s - 1080}px`;
+  }
+  addEventListener("resize", fit);
+
+  const overlay = document.getElementById("overlay");
+  const mark = Lampion.mount(document.getElementById("mark"), { size: 64, state: "hidden", mood: "alert" });
+  const stateName = document.getElementById("stateName");
+  const note = document.getElementById("note");
+  const composeText = document.getElementById("composeText");
+  const tray = document.getElementById("trayLamp");
+  const flyout = document.getElementById("flyout");
+  const LABEL = { hidden: "Hidden", idle: "Hidden (resting lantern)", armed: "Armed", listening: "Listening", thinking: "Thinking", inserted: "Inserted", speaking: "Speaking", error: "Error: microphone not found" };
+
+  let resting = false;
+  let typed = "";
+  function renderCompose(fresh = "", base = typed) {
+    composeText.innerHTML = "";
+    if (!base && !fresh) {
+      composeText.innerHTML = '<span class="caret"></span><span class="ph">Type a message</span>';
+      return;
+    }
+    composeText.append(document.createTextNode(base));
+    if (fresh) { const f = document.createElement("span"); f.className = "fresh"; f.textContent = fresh; composeText.append(f); }
+    const c = document.createElement("span"); c.className = "caret"; composeText.append(c);
+  }
+
+  function setState(s, extra = {}) {
+    const st = s === "hidden" && resting ? "idle" : s;
+    mark.set(st, extra);
+    overlay.classList.toggle("is-error", s === "error");
+    document.getElementById("fix").tabIndex = s === "error" ? 0 : -1;
+    stateName.textContent = s === "speaking" ? `Speaking (${cap(mark.el.dataset.mood)})` : LABEL[st];
+  }
+  const cap = s => s[0].toUpperCase() + s.slice(1);
+
+  /* ---------- level sources ---------- */
+  let micStream = null, analyser = null, buf = null;
+  const env = Lampion.speechEnvelope(7);
+  let levelRAF = 0, levelMode = null, t0 = 0;
+  function startLevels(mode) {
+    levelMode = mode; t0 = performance.now();
+    cancelAnimationFrame(levelRAF);
+    let lastPush = 0;
+    const loop = now => {
+      if (now - lastPush >= 33) { // throttle to 30 Hz like the real level events
+        lastPush = now;
+        if (mode === "mic" && analyser) {
+          analyser.getFloatTimeDomainData(buf);
+          let sum = 0; for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+          const db = 20 * Math.log10(Math.sqrt(sum / buf.length) + 1e-9);
+          mark.level((db + 58) / 46);
+        } else {
+          const e = env(now - t0);
+          mark.level(e.v);
+          if (mode === "speak" && e.phraseStart) mark.ring();
+        }
+      }
+      levelRAF = requestAnimationFrame(loop);
+    };
+    levelRAF = requestAnimationFrame(loop);
+  }
+  function stopLevels() { cancelAnimationFrame(levelRAF); levelRAF = 0; levelMode = null; mark.level(0); }
+
+  /* ---------- dictation ---------- */
+  const PHRASES = [
+    "Yes please, Saturday works. The rack is 45 cm deep, so the switch should fit",
+    "Could you bring the short patch cables too? I only have the two-metre ones",
+    "Great, see you around 11. I'll have coffee on",
+  ];
+  let phraseIx = 0, dictating = false, armedAt = 0, timers = [];
+  const later = (fn, ms) => { const id = setTimeout(fn, ms); timers.push(id); return id; };
+  function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+
+  function startDictation() {
+    if (dictating) return;
+    clearTimers(); stopLevels(); flyout.classList.remove("open");
+    dictating = true; armedAt = performance.now();
+    setState("armed");
+    later(() => { if (!dictating) return; setState("listening"); startLevels(micStream ? "mic" : "sim"); }, 120);
+  }
+  function endDictation() {
+    if (!dictating) return;
+    dictating = false;
+    const held = performance.now() - armedAt;
+    stopLevels();
+    if (held < 400) { setState("hidden"); note.textContent = "Too short to transcribe, so nothing was inserted."; return; }
+    setState("thinking");
+    note.textContent = "Transcribing locally (whisper.cpp, Vulkan). Budget: text lands within 500 ms of release.";
+    later(() => insertText(PHRASES[phraseIx++ % PHRASES.length]), 900);
+  }
+  function insertText(text) {
+    const lead = typed && !/\s$/.test(typed) ? " " : "";
+    const full = lead + text;
+    let i = 0;
+    const step = () => {
+      i = Math.min(full.length, i + 2);
+      renderCompose(full.slice(0, i));
+      if (i < full.length) later(step, 16);
+      else {
+        const before = typed; typed += full; renderCompose(full, before);
+        const f = composeText.querySelector(".fresh");
+        later(() => f && f.classList.add("settled"), 50);
+        setState("inserted"); mark.pulse();
+        note.textContent = "Inserted at the caret. Target app: chat, so the trailing period was dropped.";
+        later(() => { mark.el.style.transition = "opacity 600ms ease"; mark.el.style.opacity = "0"; }, 700);
+        later(() => { mark.el.style.transition = ""; mark.el.style.opacity = ""; setState("hidden"); renderCompose(); }, 1320);
+      }
+    };
+    step();
+  }
+
+  /* ---------- speaking and error ---------- */
+  function speak(mood, ms = 4200) {
+    clearTimers(); stopLevels(); dictating = false; flyout.classList.remove("open");
+    setState("speaking", { mood });
+    mark.ring();
+    startLevels("speak");
+    note.textContent = { alert: "Alert: “Your 9:00 standup starts in 2 minutes.”", angry: "Angry (a read-aloud mood preview): “Who scheduled a meeting at 7 AM?”", calm: "Calm: “It's seven o'clock. The trash goes out tonight.”" }[mood];
+    later(() => { stopLevels(); setState("hidden"); }, ms);
+  }
+  function fail() {
+    clearTimers(); stopLevels(); dictating = false;
+    setState("error");
+    note.textContent = "Stays for 6 s or until clicked. The overlay turns click-through off only in this state.";
+    later(() => { if (mark.state === "error") setState("hidden"); }, 6000);
+  }
+  document.getElementById("fix").addEventListener("click", () => { flyout.classList.add("open"); flyout.querySelector("button").focus(); setState("hidden"); clearTimers(); });
+  document.getElementById("fix").addEventListener("keydown", e => { if (e.key === "Enter") e.target.click(); });
+  flyout.querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
+    flyout.classList.remove("open");
+    note.textContent = `Microphone set to ${b.dataset.mic}. Hold Right Ctrl to try again.`;
+  }));
+
+  /* ---------- keyboard ---------- */
+  let spaceTimer = 0, spaceDown = false;
+  function flickerIdle() {
+    if (mark.state === "hidden" || mark.state === "idle") {
+      tray.classList.add("flick"); setTimeout(() => tray.classList.remove("flick"), 40);
+      if (resting) mark.flicker();
+    } else if (mark.state === "listening") mark.flicker();
+  }
+  function keyVis(id, on) { const k = document.getElementById(id); if (k) k.classList.toggle("down", on); }
+  addEventListener("keydown", e => {
+    if (e.target.closest && e.target.closest("#strip, .flyout")) {
+      if (e.key !== "Control" && e.code !== "ControlRight") return;
+    }
+    stopDemo();
+    if (e.code === "ControlRight") { e.preventDefault(); keyVis("kRC", true); if (!e.repeat) startDictation(); return; }
+    if (e.code === "Space") {
+      e.preventDefault();
+      if (e.repeat || spaceDown) return;
+      spaceDown = true; keyVis("kSp", true);
+      spaceTimer = setTimeout(() => { spaceTimer = 0; startDictation(); }, 220);
+      return;
+    }
+    if (e.key === "Escape") { if (dictating) { dictating = false; clearTimers(); stopLevels(); setState("hidden"); note.textContent = "Cancelled."; } flyout.classList.remove("open"); return; }
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.key === "Backspace") { typed = typed.slice(0, -1); renderCompose(); flickerIdle(); e.preventDefault(); return; }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (typed.trim()) {
+        const msgs = document.getElementById("msgs");
+        const b = document.createElement("div"); b.className = "bubble out"; b.textContent = typed.trim(); msgs.append(b);
+        const s = document.createElement("div"); s.className = "stamp out"; s.textContent = "Sent"; msgs.append(s);
+        typed = ""; renderCompose();
+      }
+      flickerIdle(); return;
+    }
+    if (e.key.length === 1) { typed += e.key; renderCompose(); flickerIdle(); }
+  });
+  addEventListener("keyup", e => {
+    if (e.code === "ControlRight") { keyVis("kRC", false); endDictation(); }
+    if (e.code === "Space") {
+      keyVis("kSp", false); spaceDown = false;
+      if (spaceTimer) { clearTimeout(spaceTimer); spaceTimer = 0; typed += " "; renderCompose(); flickerIdle(); }
+      else endDictation();
+    }
+  });
+  addEventListener("blur", () => { if (dictating) endDictation(); });
+
+  /* ---------- control strip ---------- */
+  document.querySelectorAll("[data-speak]").forEach(b => b.addEventListener("click", () => { stopDemo(); speak(b.dataset.speak); }));
+  document.getElementById("btnError").addEventListener("click", () => { stopDemo(); fail(); });
+  const toggle = (id, fn) => { const b = document.getElementById(id); b.addEventListener("click", () => { const on = b.getAttribute("aria-pressed") !== "true"; b.setAttribute("aria-pressed", on); fn(on); }); return b; };
+  const reduceBtn = toggle("btnReduce", on => document.documentElement.classList.toggle("reduce-motion", on));
+  reduceBtn.setAttribute("aria-pressed", document.documentElement.classList.contains("reduce-motion"));
+  toggle("btnResting", on => { resting = on; if (mark.state === "hidden" || mark.state === "idle") setState("hidden"); });
+  toggle("btnBounds", on => overlay.classList.toggle("bounds", on));
+  toggle("btnMic", async on => {
+    const b = document.getElementById("btnMic");
+    if (!on) { micStream && micStream.getTracks().forEach(t => t.stop()); micStream = null; analyser = null; note.textContent = "Back to a simulated voice level."; return; }
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const ctx = new AudioContext();
+      const src = ctx.createMediaStreamSource(micStream);
+      analyser = ctx.createAnalyser(); analyser.fftSize = 1024; buf = new Float32Array(analyser.fftSize);
+      src.connect(analyser);
+      note.textContent = "Using your microphone. The level stays in this page; nothing is recorded or sent.";
+    } catch (err) {
+      b.setAttribute("aria-pressed", "false");
+      fail();
+    }
+  });
+  document.getElementById("btnDemo").addEventListener("click", () => runDemo());
+
+  /* ---------- auto demo ---------- */
+  let demoTimers = [];
+  function stopDemo() { demoTimers.forEach(clearTimeout); demoTimers = []; }
+  function runDemo() {
+    stopDemo(); clearTimers(); stopLevels(); dictating = false; typed = ""; renderCompose(); setState("hidden");
+    const at = (ms, fn) => demoTimers.push(setTimeout(fn, ms));
+    note.textContent = "Demo: a few keystrokes, a dictation, then a spoken reminder.";
+    [500, 680, 860].forEach(ms => at(ms, flickerIdle));
+    at(1500, () => { keyVis("kRC", true); startDictation(); });
+    at(4300, () => { keyVis("kRC", false); endDictation(); });
+    at(8200, () => speak("calm", 3600));
+    at(12200, () => { note.textContent = "Demo finished. Hold Right Ctrl or Space to try it yourself."; });
+  }
+
+  /* ---------- static poses for screenshots ---------- */
+  function staticPose(state) {
+    const mood = q.get("mood") || "calm";
+    if (state === "listening") { setState("listening"); mark.freeze({ level: 0.62 }); }
+    else if (state === "thinking") { setState("thinking"); mark.freeze({ rotate: 8, ghost: -8 }); }
+    else if (state === "inserted") { typed = PHRASES[0]; renderCompose(); setState("inserted"); mark.freeze({ halo: 0.45 }); }
+    else if (state === "speaking") { setState("speaking", { mood }); mark.freeze({ level: 0.55, rings: [1.35, 1.95] }); }
+    else if (state === "error") { setState("error"); mark.freeze({ rotate: -3, ghost: 3 }); }
+    else if (state === "armed") { setState("armed"); mark.freeze({}); }
+    else setState("hidden");
+    if (q.get("bounds") === "1") overlay.classList.add("bounds");
+  }
+
+  renderCompose();
+  fit();
+  if (STATIC) staticPose(q.get("state") || "listening");
+  else setTimeout(runDemo, 400);
+})();
+</script>
+</body>
+</html>

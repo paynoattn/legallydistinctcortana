@@ -1,0 +1,8 @@
+# LF everywhere (rustfmt newline_style = "Unix", prettier endOfLine = lf). Windows checkouts
+# must not rewrite line endings, or `make fmt-check` fails on a fresh clone.
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.icns binary
+*.onnx binary
+*.gguf binary

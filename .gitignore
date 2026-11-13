@@ -1,0 +1,31 @@
+# Rust
+/target/
+/mutants.out/
+/mutants.out.old/
+*.profraw
+*.profdata
+lcov.info
+
+# Tauri
+/crates/desktop/gen/schemas
+
+# Node / UI
+node_modules/
+dist/
+coverage/
+reports/
+.stryker-tmp/
+*.log
+
+# Local secrets, models, and user data never belong in git
+*.local
+.env
+.env.*
+/models/
+/.data/
+
+# Editors and OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store

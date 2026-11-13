@@ -1,0 +1,57 @@
+# cargo-deny: supply-chain gate, run by `make lint`. Schema: https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+all-features = true
+
+[advisories]
+# Fail on any RustSec vulnerability, unmaintained, or yanked crate in the lockfile.
+unmaintained = "all"
+yanked = "deny"
+ignore = [
+  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error via glib-macros 0.18 <- gtk 0.18, Linux-only, pulled by tauri/wry/muda. No fix until Tauri moves to gtk4; revisit on every Tauri minor bump (docs/architecture/adr/0003-supply-chain-exceptions.md)." },
+]
+
+[licenses]
+# Permissive licenses only. Add one here only after checking it is compatible with how
+# you ship (this is a protected file).
+# cargo-deny warns about allowed licenses no dependency uses, so keep this list to
+# what the lockfile needs. Other permissive candidates: BSD-2-Clause, ISC.
+# MPL-2.0 is file-level copyleft: we may ship it in a MIT/Apache binary as long as we do not
+# modify those files without publishing the changes (Servo CSS crates via Tauri, option-ext).
+allow = [
+  "Apache-2.0",
+  "BSD-3-Clause",
+  "MIT",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Zlib",
+]
+confidence-threshold = 0.9
+exceptions = [
+  # Build-time only, via system-deps <- gtk-sys (Linux Tauri).
+  { crate = "target-lexicon", allow = ["Apache-2.0 WITH LLVM-exception"] },
+]
+
+[licenses.private]
+# Workspace crates are `publish = false`; their own license field is not a dependency.
+ignore = true
+
+[bans]
+multiple-versions = "deny"
+wildcards = "deny"
+# Path dependencies between workspace crates have no version; that is not a wildcard risk.
+allow-wildcard-paths = true
+highlight = "all"
+skip = []
+# Tauri's tree carries its own duplicate versions (gtk3, Servo CSS, windows-sys, phf). We
+# cannot fix them from here; the duplicate check still applies to everything we add.
+skip-tree = [
+  { crate = "tauri@2", reason = "duplicates inside Tauri's own dependency tree; see ADR 0003" },
+  { crate = "tauri-build@2", reason = "build-time duplicates inside Tauri's tree; see ADR 0003" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

@@ -1,0 +1,171 @@
+/* Lampion design tokens, shared by the artboards in this folder.
+   Brand source: docs/brand/lampion/README.md. Fonts are SIL OFL, loaded from Google Fonts. */
+@import url("https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:ital,wght@0,200..800;1,200..800&family=Young+Serif&display=swap");
+
+:root {
+  /* Brand palette */
+  --dusk: #1F2347;        /* text on light; Today background */
+  --glow: #FFB81C;        /* the light: only where something is live */
+  --wick: #D9820B;        /* caps, large icons; never text on white (2.9:1) */
+  --paper: #FFF1C7;       /* lantern core; headings on Dusk (13.4:1) */
+  --plum: #6E3A7D;        /* links and accent text on light (8.2:1) */
+  --mist: #C8CBE3;        /* secondary text on Dusk (9.4:1); dividers on light */
+
+  /* Derived, used sparingly */
+  --dusk-deep: #191C3B;   /* lower edge of the Today scene */
+  --dusk-raise: #272B55;  /* focused and pressed surfaces on Dusk */
+  --dusk-line: rgb(200 203 227 / 0.16); /* hairline on Dusk */
+  --mist-dim: #A3A8D0;    /* tertiary text on Dusk (6.5:1, AA) */
+  --ember: #FF8A7A;       /* failure and conflict on Dusk (6.6:1) */
+  --ember-ink: #B3261E;   /* failure on light surfaces (6.0:1 on white) */
+
+  /* Mood tints (RGB triplets for rgb(var() / a)); used by the halo and rings */
+  --mood-neutral: 255 214 140;
+  --mood-calm: 150 162 230;
+  --mood-cheerful: 255 200 80;
+  --mood-alert: 255 184 28;
+  --mood-urgent: 255 140 30;
+  --mood-angry: 235 85 60;
+  --mood-mad: 214 40 50;
+  --mood-whisper: 205 200 235;
+  --mood-deadpan: 170 175 190;
+
+  /* Type */
+  --font-display: "Young Serif", Georgia, serif;
+  --font-ui: "Atkinson Hyperlegible Next", "Atkinson Hyperlegible", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --font-os: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; /* OS and browser chrome only */
+
+  /* Type scale (modular, 1.25 from 16; Today uses the 10-foot steps) */
+  --t-12: 0.75rem;
+  --t-14: 0.875rem;
+  --t-16: 1rem;
+  --t-18: 1.125rem;
+  --t-20: 1.25rem;
+  --t-22: 1.375rem;
+  --t-26: 1.625rem;
+  --t-32: 2rem;
+  --t-40: 2.5rem;
+  --t-64: 4rem;
+
+  /* Space (4 px base) */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px; --s-6: 32px; --s-7: 48px; --s-8: 64px; --s-9: 96px;
+
+  /* Radius: by role, not one value everywhere */
+  --r-chip: 6px;      /* small controls */
+  --r-menu: 8px;      /* Windows 11 menus and flyouts */
+  --r-window: 8px;    /* Windows 11 windows */
+  --r-focus: 12px;    /* focus ring around list items */
+  --r-pill: 999px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(.2, .7, .2, 1);
+  --ease-swing: cubic-bezier(.45, 0, .55, 1);   /* pendulum, ease-in-out */
+  --d-flicker: 120ms;
+  --d-armed: 140ms;
+  --d-fade: 600ms;
+  --d-breathe: 4s;
+  --d-swing: 0.7s;   /* half of the 1.4 s pendulum cycle */
+
+  /* Focus */
+  --focus-ring: 0 0 0 3px var(--glow);
+}
+
+/* ---------- The animated mark (overlay, reading pill, Today) ---------- */
+
+.lp {
+  --size: 64px;
+  --tint: var(--mood-alert);
+  --core-s: 1;        /* core scale, 1.0 to 1.35 */
+  --core-o: 1;        /* core opacity */
+  --halo: 0;          /* halo opacity */
+  position: relative;
+  width: var(--size);
+  height: var(--size);
+  transition: opacity var(--d-armed) var(--ease-out), transform var(--d-armed) var(--ease-out);
+}
+.lp[data-mood="neutral"] { --tint: var(--mood-neutral); }
+.lp[data-mood="calm"] { --tint: var(--mood-calm); }
+.lp[data-mood="cheerful"] { --tint: var(--mood-cheerful); }
+.lp[data-mood="alert"] { --tint: var(--mood-alert); }
+.lp[data-mood="urgent"] { --tint: var(--mood-urgent); }
+.lp[data-mood="angry"] { --tint: var(--mood-angry); }
+.lp[data-mood="mad"] { --tint: var(--mood-mad); }
+.lp[data-mood="whisper"] { --tint: var(--mood-whisper); }
+.lp[data-mood="deadpan"] { --tint: var(--mood-deadpan); }
+
+.lp svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.lp-halo {
+  position: absolute;
+  left: 50%; top: 53%;
+  width: 230%; aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(var(--tint) / .62) 0%, rgb(var(--tint) / .28) 32%, rgb(var(--tint) / 0) 68%);
+  opacity: var(--halo);
+  pointer-events: none;
+}
+.lp-rings { position: absolute; left: 50%; top: 53%; width: 0; height: 0; pointer-events: none; }
+.lp-ring {
+  position: absolute;
+  left: calc(var(--size) * -0.5); top: calc(var(--size) * -0.5);
+  width: var(--size); height: var(--size);
+  border-radius: 50%;
+  border: 2px solid rgb(var(--tint) / .9);
+  animation: lp-ring 1.3s var(--ease-out) forwards;
+}
+@keyframes lp-ring { from { transform: scale(.7); opacity: .85; } to { transform: scale(2.3); opacity: 0; } }
+
+.lp-swing, .lp-sway { transform-box: view-box; transform-origin: 24px 1.5px; }
+.lp-core {
+  transform-box: fill-box; transform-origin: center;
+  transform: scale(var(--core-s));
+  opacity: var(--core-o);
+}
+.lp-check {
+  position: absolute; right: -4%; bottom: 4%;
+  width: 38%; aspect-ratio: 1; border-radius: 50%;
+  background: var(--dusk); color: var(--paper);
+  display: grid; place-items: center;
+  box-shadow: 0 0 0 2px var(--paper);
+  opacity: 0; transform: scale(.6);
+  transition: opacity 160ms var(--ease-out), transform 160ms var(--ease-out);
+}
+.lp-check svg { position: static; width: 62%; height: 62%; }
+.lp[data-state="inserted"] .lp-check { opacity: 1; transform: none; }
+
+/* States */
+.lp[data-state="hidden"] { opacity: 0; transform: scale(.6); }
+.lp[data-state="idle"] .lp-core { animation: lp-breathe var(--d-breathe) ease-in-out infinite; }
+.lp[data-state="idle"] .lp-sway { animation: lp-draft 20s ease-in-out infinite; }
+.lp[data-state="thinking"] .lp-swing { animation: lp-swing var(--d-swing) var(--ease-swing) infinite alternate; }
+.lp[data-state="thinking"] { --core-o: .7; --core-s: 1; --halo: .18; }
+.lp[data-state="error"] { --core-o: .45; --halo: 0; }
+.lp[data-state="error"] .lp-swing { animation: lp-shake 450ms ease-in-out 1; }
+.lp.is-flicker svg { filter: brightness(1.14); }
+.lp svg { transition: filter var(--d-flicker) ease-out; }
+.lp.is-pulse .lp-core { animation: lp-pulse 520ms var(--ease-out) 1; }
+.lp.is-pulse .lp-halo { animation: lp-pulse-halo 520ms var(--ease-out) 1; }
+
+@keyframes lp-breathe { 0%, 100% { opacity: .85; } 50% { opacity: 1; } }
+@keyframes lp-draft { 0%, 88%, 100% { transform: rotate(0); } 91% { transform: rotate(2deg); } 94% { transform: rotate(-1.6deg); } 97% { transform: rotate(.6deg); } }
+@keyframes lp-swing { from { transform: rotate(-8deg); } to { transform: rotate(8deg); } }
+@keyframes lp-shake { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(3deg); } 40% { transform: rotate(-3deg); } 60% { transform: rotate(2.4deg); } 80% { transform: rotate(-1.4deg); } }
+@keyframes lp-pulse { 0% { transform: scale(1); opacity: 1; } 35% { transform: scale(1.3); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes lp-pulse-halo { 0% { opacity: var(--halo); } 35% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Reduced motion: brightness and halo only. No sway, swing, shake, scale or rings. */
+.reduce-motion .lp,
+.reduce-motion .lp .lp-check { transform: none !important; }
+.reduce-motion .lp .lp-swing,
+.reduce-motion .lp .lp-sway { animation: none !important; transform: none !important; }
+.reduce-motion .lp .lp-core { transform: none !important; }
+.reduce-motion .lp .lp-rings { display: none; }
+.reduce-motion .lp.is-pulse .lp-core { animation: none; }
+.reduce-motion .lp[data-state="thinking"] .lp-core { animation: lp-breathe 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .lp .lp-swing, .lp .lp-sway { animation: none !important; }
+  .lp .lp-rings { display: none; }
+}
+
+/* Utility */
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

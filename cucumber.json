@@ -1,0 +1,8 @@
+{
+  "default": {
+    "paths": ["features/ui/**/*.feature"],
+    "import": ["features/ui/steps/**/*.ts"],
+    "format": ["progress"],
+    "strict": true
+  }
+}

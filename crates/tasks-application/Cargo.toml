@@ -1,0 +1,15 @@
+[package]
+name = "tasks-application"
+description = "Task use cases and the ports they need (TaskRepository, IdGenerator)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tasks-domain.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,6 @@
+{
+  "$schema": "./node_modules/knip/schema.json",
+  "entry": ["scripts/*.ts", "qa/scripts/ui/*.ts"],
+  "project": ["src/**/*.{ts,tsx}", "features/ui/**/*.ts", "qa/**/*.ts", "scripts/**/*.ts"],
+  "ignoreDependencies": ["prettier"]
+}

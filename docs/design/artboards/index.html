@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lampion artboards</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+  html { background: var(--dusk); }
+  body { margin: 0 auto; max-width: 1180px; padding: 64px 40px 96px; font-family: var(--font-ui); color: var(--paper); }
+  header { display: flex; align-items: center; gap: 22px; margin-bottom: 56px; }
+  header img { width: 64px; height: 64px; }
+  h1 { font: 400 46px/1.05 var(--font-display); margin: 0; }
+  header p { margin: 8px 0 0; color: var(--mist); font-size: 19px; max-width: 60ch; line-height: 1.5; }
+  .board { display: grid; grid-template-columns: 520px 1fr; gap: 40px; align-items: start; padding: 36px 0; border-top: 1px solid var(--dusk-line); }
+  .board a.shot { display: block; border-radius: 10px; overflow: hidden; box-shadow: 0 0 0 1px var(--dusk-line); }
+  .board a.shot img { display: block; width: 100%; height: auto; }
+  .board a:focus-visible { outline: 3px solid var(--glow); outline-offset: 4px; }
+  h2 { font: 400 30px/1.15 var(--font-display); margin: 0 0 12px; }
+  h2 a { color: inherit; text-decoration: none; }
+  h2 a:hover { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 5px; }
+  .board p { font-size: 18px; line-height: 1.6; color: var(--mist); margin: 0 0 14px; max-width: 62ch; }
+  .board p.try { color: var(--paper); }
+  .links { display: flex; flex-wrap: wrap; gap: 10px 22px; font-size: 16px; }
+  .links a { color: var(--glow); text-underline-offset: 3px; }
+  footer { border-top: 1px solid var(--dusk-line); padding-top: 28px; color: var(--mist); font-size: 16px; line-height: 1.6; }
+  footer a { color: var(--glow); }
+  @media (max-width: 960px) { .board { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <img src="../../brand/lampion/app-icon.svg" alt="">
+  <div>
+    <h1>Lampion artboards</h1>
+    <p>Three surfaces where the assistant meets you: the corner light while you dictate, the read-aloud menu in your browser, and the Today screen at sign-in. Every artboard is live; open it and use it.</p>
+  </div>
+</header>
+
+<section class="board">
+  <a class="shot" href="01-overlay.html"><img src="01-overlay-states.png" alt="Storyboard of the overlay states: hidden, armed, listening, thinking, inserted, speaking, error"></a>
+  <div>
+    <h2><a href="01-overlay.html">The voice indicator</a></h2>
+    <p>The lantern is the whole interface while you dictate, so it has to explain itself in the corner of your eye: it scales in when you press the key, brightens with your voice, swings while it thinks, and gives one bright pulse when the text lands at your caret. It never takes focus and shows no text, except a one-line reason when something is wrong. At idle the corner stays empty, and only the tray lantern flickers when you type.</p>
+    <p class="try">Hold Right Ctrl (or Space) to dictate into the chat box. The strip below the screen triggers the speaking moods, the microphone error, reduced motion and your real microphone.</p>
+    <div class="links"><a href="01-overlay.html">Open the live artboard</a><a href="01-overlay-storyboard.html">Storyboard</a><a href="01-overlay.html?state=listening">Static: listening</a></div>
+  </div>
+</section>
+
+<section class="board">
+  <a class="shot" href="02-read-aloud-context-menu.html"><img src="02-read-aloud-context-menu.png" alt="A browser article with a paragraph selected and the context menu open on Read aloud with Lampion, showing the mood submenu"></a>
+  <div>
+    <h2><a href="02-read-aloud-context-menu.html">Read aloud from the right-click menu</a></h2>
+    <p>The menu belongs to the browser, so it looks like Chromium on Windows 11 and Lampion adds one entry with its mark. Moods are a submenu because most people pick one once and keep it. While Lampion reads, a reading pill sits beside the lantern, and the sentence being read is lit in Paper on the page, so you can follow along or look away.</p>
+    <p class="try">Select any text and right-click, then pick a mood. The preview speaks with your browser's voice and fakes moods with rate and pitch; the real product uses Lampion's local expressive voice.</p>
+    <div class="links"><a href="02-read-aloud-context-menu.html">Open the live artboard</a><a href="02-read-aloud-context-menu.html?state=reading">Static: reading</a></div>
+  </div>
+</section>
+
+<section class="board">
+  <a class="shot" href="03-today.html"><img src="03-today.png" alt="The Today screen: a lantern hangs at now on a string timeline, lighting the greeting and the next meeting"></a>
+  <div>
+    <h2><a href="03-today.html">Today, at sign-in</a></h2>
+    <p>Today is a single evening scene rather than a grid of cards. The day hangs on a string, the lantern hangs at now, and its light falls on the greeting and the next thing you need to do. The further a thing is from now, the further it sits from the light. The other columns stay quiet, and Projects is a real table because those rows are meant to be compared.</p>
+    <p class="try">Move with the arrows, Tab, the mouse or a controller (D-pad or stick, A to select, B for the desktop, Y to read it to you, Menu for settings, LB and RB to jump between sections).</p>
+    <div class="links"><a href="03-today.html">Open the live artboard</a><a href="03-today.html?static=1">Static</a></div>
+  </div>
+</section>
+
+<footer>
+  Tokens are in <a href="tokens.css">tokens.css</a> and the animated mark in <a href="mark.js">mark.js</a>. The reasoning, the changes made after critique, and the open questions are in README.md. Brand source: <a href="../../brand/lampion/">docs/brand/lampion</a>.
+</footer>
+</body>
+</html>

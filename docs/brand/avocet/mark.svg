@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="Avocet mark">
+  <title>Avocet mark</title>
+  <path d="M27.5 32C25.6 25.5 26 19.5 29.5 14" fill="none" stroke="#2E7D7F" stroke-width="7" stroke-linecap="round"/>
+  <path d="M33.6 10.6C39 11.2 43.6 9.4 47 3.8C45.8 10.4 40.8 15.2 34.2 15.6Z" fill="#2E7D7F"/>
+  <circle cx="30" cy="13" r="5.75" fill="#2E7D7F"/>
+  <path d="M1.5 27C8.5 30.8 17.5 31.4 25 30.2C30.5 29.3 35 30.4 35.6 33.4C36.4 37.6 30.5 40.8 21.5 40.8C12.8 40.8 6 37.8 3.8 33.4C2.8 31.4 2.1 29.2 1.5 27Z" fill="#2E7D7F"/>
+  <path d="M8.5 34.2C15 36.2 22.5 36.2 29.5 34.2" fill="none" stroke="#F4F7F5" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="31.4" cy="12" r="1.7" fill="#F4F7F5"/>
+</svg>

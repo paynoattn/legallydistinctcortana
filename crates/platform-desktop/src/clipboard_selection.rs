@@ -148,6 +148,13 @@ pub trait KeyboardAccess: Send + Sync {
     ///
     /// A description of the input failure.
     fn send_copy(&self) -> Result<(), String>;
+
+    /// Releases held modifiers, then sends the platform's paste shortcut to the focused app.
+    ///
+    /// # Errors
+    ///
+    /// A description of the input failure.
+    fn send_paste(&self) -> Result<(), String>;
 }
 
 /// Reads the selection in any app: saves every clipboard format, puts a marker on the
@@ -338,6 +345,10 @@ mod tests {
                 *self.board.contents.lock().unwrap() = vec![(TEXT, selection.as_bytes().to_vec())];
             }
             Ok(())
+        }
+
+        fn send_paste(&self) -> Result<(), String> {
+            Err("not used".into())
         }
     }
 
@@ -640,6 +651,10 @@ mod tests {
             *self.board.contents.lock().unwrap() =
                 vec![(TEXT, format!("selection {number}").into_bytes())];
             Ok(())
+        }
+
+        fn send_paste(&self) -> Result<(), String> {
+            Err("not used".into())
         }
     }
 

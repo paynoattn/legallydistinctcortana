@@ -4,6 +4,18 @@
 | ------------ | ---- | ---------------- | ------------------------ |
 | M1 Dictation | M    | #012, #014, #016 | area/voice, type/feature |
 
+## Status
+
+**MVP slice implemented** on branch `feat/dictation` (2026-11-15): hold F9, speak, release, and the words are typed into the focused app, as `voice.py ptt` does. It differs from the design below:
+
+- It lives in the `speech-*` crates rather than new `voice-*` crates: `speech-application::DictationService` (Idle → Listening → Finishing, a recording under 250 ms is a tap) with the `AudioInput` and `SpeechToText` ports, `speech-infrastructure::MicrophoneInput` (cpal, open only while the key is held, capped at 5 minutes) and `WyomingTranscriber`, and `platform-desktop::ClipboardTextInserter` behind the `platform_ports::TextInserter` port.
+- Speech goes to a Wyoming Whisper server (`VOICE_HOST`, `VOICE_STT_PORT` default 10300, `VOICE_STT_LANGUAGE` default `en`, `auto` to detect) rather than the in-process engines of #016. No VAD (#014); the whole recording is sent on release, downsampled to 16 kHz.
+- The shortcut is F9 (`DICTATE_SHORTCUT` to change it) through `tauri-plugin-global-shortcut`, which reports key down and key up. Esc does not cancel yet.
+- Text is inserted as the transcript plus a space, with no cleanup rules, dictionary, or snippets yet, and no UI: outcomes go to the log, never the words.
+- Insertion pastes through the clipboard and puts every format back after 150 ms (the #020 default). If the clipboard cannot be saved exactly, nothing is pasted and the dictation fails. The sequence-number check, target-aware formatting, and the UIPI fallback of #020 are still open.
+- **Privacy:** the recording goes to `VOICE_HOST` in plain TCP and does not yet pass the per-data-class privacy check (#047, #074). Over Tailscale the link is encrypted by WireGuard; on a plain LAN it is not.
+- Tests: `speech-infrastructure`'s `dictation_flow` drives the service through a fake Whisper server; the device path is covered by [`qa/procedures/dictation.md`](../../qa/procedures/dictation.md).
+
 ## Story
 
 As a writer, I want to hold a key, speak, and get clean text with my own words spelled right and my snippets expanded, so that I can dictate without fixing the output afterwards.

@@ -1,15 +1,17 @@
 pub(crate) mod codec;
+mod connection;
+mod transcriber;
 
-use std::io::{self, BufReader, Read};
-use std::net::{TcpStream, ToSocketAddrs};
-use std::time::{Duration, Instant};
+use std::io::{self, BufReader};
 
 use serde_json::{Map, Value};
 use speech_application::ports::{SpeechSynthesizer, SynthesisError};
 use speech_domain::{AudioClip, Voice, VoiceChoice};
 
 use crate::WyomingConfig;
-use codec::{CodecError, Event, read_event, write_event};
+use codec::{CodecError, Event, read_event};
+use connection::{DeadlineReader, Server};
+pub use transcriber::WyomingTranscriber;
 
 const PCM16_WIDTH: u64 = 2;
 
@@ -40,29 +42,6 @@ impl WyomingSynthesizer {
         Self { config }
     }
 
-    fn connect(&self) -> Result<TcpStream, SynthesisError> {
-        let addresses = (self.config.host.as_str(), self.config.port)
-            .to_socket_addrs()
-            .map_err(|error| self.unreachable(&error))?;
-        let mut last = io::Error::new(io::ErrorKind::NotFound, "the host name has no addresses");
-        for address in addresses {
-            match TcpStream::connect_timeout(&address, self.config.connect_timeout) {
-                Ok(stream) => return self.with_timeouts(stream),
-                Err(error) => last = error,
-            }
-        }
-        Err(self.unreachable(&last))
-    }
-
-    fn with_timeouts(&self, stream: TcpStream) -> Result<TcpStream, SynthesisError> {
-        let timeout = Some(self.config.io_timeout);
-        stream
-            .set_read_timeout(timeout)
-            .and_then(|()| stream.set_write_timeout(timeout))
-            .map_err(|error| self.unreachable(&error))?;
-        Ok(stream)
-    }
-
     fn request(&self, sentence: &str, voice: Option<&VoiceChoice>) -> Map<String, Value> {
         let mut data = Map::new();
         data.insert("text".into(), Value::from(sentence));
@@ -85,17 +64,14 @@ impl WyomingSynthesizer {
         Some(data)
     }
 
-    fn exchange(&self, request: &Event) -> Result<BufReader<DeadlineReader>, SynthesisError> {
-        let stream = self.connect()?;
-        let mut writer = stream
-            .try_clone()
-            .map_err(|error| self.unreachable(&error))?;
-        write_event(&mut writer, request).map_err(|error| self.unreachable(&error))?;
-        Ok(BufReader::new(DeadlineReader {
-            stream,
-            deadline: Instant::now() + self.config.io_timeout,
-            limit: self.config.io_timeout,
-        }))
+    fn exchange(&self, request: Event) -> Result<BufReader<DeadlineReader>, SynthesisError> {
+        let server = Server {
+            host: &self.config.host,
+            port: self.config.port,
+            connect_timeout: self.config.connect_timeout,
+            io_timeout: self.config.io_timeout,
+        };
+        connection::exchange(&server, [request]).map_err(|error| self.unreachable(&error))
     }
 
     fn speak(
@@ -103,7 +79,7 @@ impl WyomingSynthesizer {
         sentence: &str,
         voice: Option<&VoiceChoice>,
     ) -> Result<AudioClip, SynthesisError> {
-        let mut reader = self.exchange(&Event {
+        let mut reader = self.exchange(Event {
             kind: "synthesize".into(),
             data: self.request(sentence, voice),
             payload: Vec::new(),
@@ -148,7 +124,7 @@ impl SpeechSynthesizer for WyomingSynthesizer {
     }
 
     fn voices(&self) -> Result<Vec<Voice>, SynthesisError> {
-        let mut reader = self.exchange(&Event {
+        let mut reader = self.exchange(Event {
             kind: "describe".into(),
             data: Map::new(),
             payload: Vec::new(),
@@ -199,43 +175,6 @@ fn strings(list: Option<&Value>, text: impl Fn(&Value) -> Option<&str>) -> Vec<S
         .filter_map(text)
         .map(str::to_owned)
         .collect()
-}
-
-/// Reads from the socket, but never past `deadline`: every read gets only the time that is
-/// left, so a server that drips bytes cannot stretch one sentence beyond `limit`.
-struct DeadlineReader {
-    stream: TcpStream,
-    deadline: Instant,
-    limit: Duration,
-}
-
-impl DeadlineReader {
-    fn timed_out(&self) -> io::Error {
-        io::Error::new(
-            io::ErrorKind::TimedOut,
-            format!("no complete answer within {} s", self.limit.as_secs()),
-        )
-    }
-}
-
-impl Read for DeadlineReader {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let left = self.deadline.saturating_duration_since(Instant::now());
-        if left.is_zero() {
-            return Err(self.timed_out());
-        }
-        self.stream.set_read_timeout(Some(left))?;
-        self.stream.read(buf).map_err(|error| {
-            if matches!(
-                error.kind(),
-                io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
-            ) {
-                self.timed_out()
-            } else {
-                error
-            }
-        })
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -342,10 +281,11 @@ fn error_text(data: &Map<String, Value>) -> String {
 mod tests {
     use std::net::TcpListener;
     use std::thread::{self, JoinHandle};
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use serde_json::json;
 
+    use super::codec::write_event;
     use super::*;
 
     type Reply = (&'static str, Value, Vec<u8>);

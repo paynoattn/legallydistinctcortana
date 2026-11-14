@@ -1,0 +1,110 @@
+.read-aloud {
+  --dusk: #1f2347;
+  --dusk-raised: #2a2f5c;
+  --glow: #ffb81c;
+  --paper: #fff1c7;
+  --mist: #c8cbe3;
+
+  box-sizing: border-box;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0.9rem 0.9rem 1rem;
+  max-width: none;
+  color: var(--paper);
+  background: var(--dusk);
+  font-family: system-ui, sans-serif;
+  font-size: 0.875rem;
+}
+
+.read-aloud h1 {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--mist);
+}
+
+.read-aloud figure {
+  margin: 0 0 0.75rem;
+}
+
+.read-aloud blockquote {
+  margin: 0;
+  max-height: 4.6em;
+  overflow: hidden;
+  line-height: 1.4;
+}
+
+.read-aloud figcaption {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--mist);
+}
+
+.read-aloud [role='menu'] {
+  display: grid;
+  gap: 0.125rem;
+}
+
+.read-aloud button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+}
+
+.read-aloud [role='menuitem'] {
+  display: grid;
+  grid-template-columns: 1.5rem 5rem 1fr;
+  align-items: baseline;
+  padding: 0.3rem 0.5rem;
+  text-align: left;
+}
+
+.read-aloud [role='menuitem']:hover,
+.read-aloud [role='menuitem']:focus-visible {
+  background: var(--dusk-raised);
+}
+
+.read-aloud button:focus-visible {
+  outline: 2px solid var(--glow);
+  outline-offset: 1px;
+}
+
+.read-aloud kbd {
+  font: inherit;
+  color: var(--glow);
+}
+
+.read-aloud .mood-hint {
+  font-size: 0.75rem;
+  color: var(--mist);
+}
+
+.read-aloud > p > button,
+.read-aloud > [role='status'] > button,
+.read-aloud > button {
+  padding: 0.25rem 0.75rem;
+  border-color: var(--mist);
+}
+
+.read-aloud [role='alert'] {
+  color: var(--glow);
+}
+
+.read-aloud > [role='status'],
+.read-aloud > [role='alert'] {
+  margin: 0 0 0.6rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .read-aloud [role='menuitem'] {
+    transition: background-color 80ms ease-out;
+  }
+}
+
+body:has(.read-aloud) {
+  margin: 0;
+  background: #1f2347;
+}

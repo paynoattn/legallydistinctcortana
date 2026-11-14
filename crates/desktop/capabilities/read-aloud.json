@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "read-aloud",
+  "description": "The read-aloud window only listens for events. Its three commands are app commands, which Tauri does not gate by capability.",
+  "windows": ["read-aloud"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}

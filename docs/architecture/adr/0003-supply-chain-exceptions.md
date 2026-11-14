@@ -16,6 +16,7 @@ Narrow exceptions only, each with a reason in `deny.toml`:
 
 - `bans.skip-tree` for `tauri@2` and `tauri-build@2`: duplicates _inside_ Tauri's tree are ignored, and duplicates we introduce still fail.
 - The license allow-list adds **MPL-2.0** (file-level copyleft; we do not modify those files) and **Zlib**. Only `target-lexicon` (build-time) may use `Apache-2.0 WITH LLVM-exception`.
+- `clipboard-win` and `error-code` alone may use **BSL-1.0** (the Boost license: permissive, no attribution needed in binaries). They are `arboard`'s Windows clipboard backend, used by read-aloud selection capture. Added 2026-11-14.
 - The advisory ignore covers **RUSTSEC-2024-0370** only (`proc-macro-error`, Linux-only, via gtk 0.18).
 
 ## Consequences

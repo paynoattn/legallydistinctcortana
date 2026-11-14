@@ -15,7 +15,7 @@ MVP done-criterion 8 in the [MVP plan](../product/mvp-plan.md#what-done-means-fo
 ## Scope
 
 - `today` window (entry `today.html` → `src/today-main.tsx`, from [#004](004-multi-window-shell.md)): borderless full screen on the primary monitor, topmost only until the first user input, then normal z-order.
-- Launch paths: autostart with `--today` when "Show Today at sign-in" is on; tray menu "Today"; hotkey Win+Alt+T; the assistant ("show my day").
+- Launch paths: autostart with `--today` when "Show Today at sign-in" is on; tray menu "Today"; hotkey Ctrl+Alt+T; the assistant ("show my day").
 - Sections in order: **Now** (greeting, time, next event with countdown and Join), **Schedule** (timeline of events and timed reminders, conflicts highlighted), **Needs you** (mail needing a reply with one-line summaries; reminders due today), **For you** (3–7 news items, each with source and reason), **Projects**, and **Start my day**.
 - Item actions: Join (opens the meeting link), Open (mail web link or default mail app; feed item in the browser; CI run in the browser; repo folder in Explorer), Done and Snooze for reminders, thumbs up/down on news (feeds interest weights).
 - Navigation: keyboard (arrows, Tab, Enter, Esc), mouse, touch (tap, swipe-scroll), and gamepad via the Gamepad API (D-pad and left stick move focus, A activates, B closes, LB/RB jump between sections).
@@ -55,7 +55,7 @@ Feature: Today view
     Given Today is open
     When I press Esc
     Then the Today window hides
-    When I press Win+Alt+T
+    When I press Ctrl+Alt+T
     Then Today is shown again with keyboard focus on the first item of "Now"
 
   Scenario: Topmost only until the first input
@@ -83,7 +83,7 @@ Feature: Today view
 
 ## Design notes
 
-- **Rust:** `briefing-application` gains `TodaySnapshotQuery` (ports to read models of calendar, mail, feeds, projects, reminders; built in ≤ 150 ms) and `SnapshotCache` (store-backed, encrypted with the profile). `desktop` adds the `today` window config, `--today` argument handling, full-screen placement on the primary monitor, and "drop topmost on first input". Win+Alt+T is registered through `platform-ports::HotkeySource` ([#012](012-global-hotkeys.md)); the `--today` autostart flag is set through the `Autostart` port ([#009](009-tray-autostart-logging.md)).
+- **Rust:** `briefing-application` gains `TodaySnapshotQuery` (ports to read models of calendar, mail, feeds, projects, reminders; built in ≤ 150 ms) and `SnapshotCache` (store-backed, encrypted with the profile). `desktop` adds the `today` window config, `--today` argument handling, full-screen placement on the primary monitor, and "drop topmost on first input". Ctrl+Alt+T is registered through `platform-ports::HotkeySource` ([#012](012-global-hotkeys.md)); the `--today` autostart flag is set through the `Autostart` port ([#009](009-tray-autostart-logging.md)).
 - **Commands (tauri-specta):** `today_snapshot`, `today_open_item(item_ref)`, `today_feedback(item_id, up|down)`, `today_close`. `today_open_item` resolves the URL or path in Rust from the item id, accepts only `https`, `http`, `msteams`, `zoommtg`, and folder paths of watched projects, and opens it with the OS handler. The webview never receives a raw URL it can navigate to.
 - **Capabilities:** the `today` window gets only those commands plus reminder Done/Snooze; no settings, file system, or shell permissions (`crates/desktop/capabilities/` is protected: needs a human's approval).
 - **UI:** `src/today/domain` holds pure view models, the section order, and a spatial focus navigator (given focusable rectangles and a direction, return the next target; property-tested). `src/today/application` holds the snapshot store and a `GamepadInput` port. `src/today/infrastructure` polls `navigator.getGamepads()` from a `requestAnimationFrame` loop inside a subscription source (no `useEffect`), with stick deadzone 0.5, first repeat after 400 ms, then every 150 ms. Components read stores with `useSyncExternalStore`. Imports from other features only through their `index.ts` (`src/projects/index.ts`, `src/feeds/index.ts`).
@@ -97,7 +97,7 @@ Feature: Today view
 1. With calendar, mail, feeds, and one project connected, turn on Settings → "Show Today at sign-in". Sign out of Windows and sign back in. Observe Today full screen on the primary monitor with data from before sign-out, then a refresh.
 2. Check each section against the sources: next meeting and countdown, timeline with an overlapping pair highlighted, mails needing reply, 3–7 news items with reasons, project state.
 3. Connect an Xbox controller (USB or Bluetooth). Move with the D-pad and the left stick, switch sections with LB/RB, press A on a news item (browser opens), press B (Today hides, tray icon remains).
-4. Press Win+Alt+T; Today reappears with focus visible on the first item. Press Esc; it hides. Reopen and press Win+D; it hides.
+4. Press Ctrl+Alt+T; Today reappears with focus visible on the first item. Press Esc; it hides. Reopen and press Win+D; it hides.
 5. Reopen, click "Start my day"; it hides. Reopen from the tray menu.
 6. On a touch screen (or the Windows touch simulator), tap a reminder's Done; observe it disappear from "Needs you" and from the Reminders page.
 7. Disconnect the network, revoke nothing, and reopen Today; confirm it still renders. In the privacy dashboard confirm no off-device entries came from Today.

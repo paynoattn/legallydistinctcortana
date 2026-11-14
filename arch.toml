@@ -36,9 +36,36 @@ ban = ["sqlx", "reqwest", "uuid", "tauri"]
 [crates.app]
 allow = ["http-api", "tasks-application", "tasks-domain", "tasks-infrastructure"]
 
+# Shared kernel: value types only.
+[crates.kernel]
+allow = []
+ban = ["tokio", "serde_json", "reqwest", "tauri", "cpal", "arboard", "enigo", "windows"]
+
+# OS capabilities as ports (application layer, shared by every context).
+[crates.platform-ports]
+allow = []
+ban = ["tokio", "serde_json", "reqwest", "tauri", "cpal", "arboard", "enigo", "windows"]
+
+# Desktop adapters for platform-ports on safe, cross-platform crates.
+[crates.platform-desktop]
+allow = ["platform-ports"]
+ban = ["tauri", "cpal", "serde_json"]
+
+[crates.speech-domain]
+allow = ["kernel"]
+ban = ["tokio", "serde_json", "reqwest", "tauri", "cpal", "arboard", "enigo", "windows"]
+
+[crates.speech-application]
+allow = ["kernel", "platform-ports", "speech-domain"]
+ban = ["tokio", "serde_json", "reqwest", "tauri", "cpal", "arboard", "enigo", "windows"]
+
+[crates.speech-infrastructure]
+allow = ["kernel", "platform-ports", "speech-application", "speech-domain"]
+ban = ["tauri", "arboard", "enigo"]
+
 # Tauri shell: composition root for the desktop UI host. Only it may depend on tauri.
 [crates.desktop]
-allow = []
+allow = ["kernel", "platform-desktop", "platform-ports", "speech-application", "speech-infrastructure"]
 
 [crates.xtask]
 allow = []

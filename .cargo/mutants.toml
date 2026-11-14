@@ -9,3 +9,7 @@ exclude_globs = ["xtask/**", "crates/app/src/main.rs", "crates/desktop/**"]
 # Debug-level line tables only: mutants rebuild the tree once per mutant, so smaller
 # debug info is noticeably faster and does not change behavior.
 profile = "mutants"
+
+# Skip what .gitignore excludes when copying to the scratch build tree: node_modules (pnpm
+# links need a privilege on Windows), target, and dist are not source and must not be copied.
+gitignore = true

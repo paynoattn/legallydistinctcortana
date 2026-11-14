@@ -1,0 +1,17 @@
+[package]
+name = "speech-application"
+description = "Read-aloud use cases and the ports they need (SpeechSynthesizer, AudioOutput)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kernel.workspace = true
+platform-ports.workspace = true
+speech-domain.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

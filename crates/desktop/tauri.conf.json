@@ -16,6 +16,20 @@
         "title": "Assistant",
         "width": 1100,
         "height": 720
+      },
+      {
+        "label": "read-aloud",
+        "title": "Read aloud",
+        "url": "index.html?view=read-aloud",
+        "visible": false,
+        "focus": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "shadow": true,
+        "width": 320,
+        "height": 500
       }
     ],
     "security": {

@@ -1,0 +1,20 @@
+[package]
+name = "platform-desktop"
+description = "Desktop adapters for platform-ports on cross-platform crates: clipboard selection capture."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+arboard.workspace = true
+enigo.workspace = true
+platform-ports.workspace = true
+tracing.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+clipboard-win.workspace = true
+
+[lints]
+workspace = true

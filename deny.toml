@@ -30,6 +30,9 @@ confidence-threshold = 0.9
 exceptions = [
   # Build-time only, via system-deps <- gtk-sys (Linux Tauri).
   { crate = "target-lexicon", allow = ["Apache-2.0 WITH LLVM-exception"] },
+  # Boost (permissive, no binary attribution), arboard's Windows clipboard backend.
+  { crate = "clipboard-win", allow = ["BSL-1.0"] },
+  { crate = "error-code", allow = ["BSL-1.0"] },
 ]
 
 [licenses.private]

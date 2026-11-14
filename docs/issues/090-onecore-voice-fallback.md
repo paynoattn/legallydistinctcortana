@@ -66,7 +66,7 @@ Feature: OneCore voice fallback
 
 ## QA procedure
 
-1. On a clean Windows 11 install with no voices downloaded in the app, select text and press Win+Alt+R (or use `POST /v1/speech/speak`). It is read in a Windows voice.
+1. On a clean Windows 11 install with no voices downloaded in the app, select text and press Ctrl+Alt+R (or use `POST /v1/speech/speak`). It is read in a Windows voice.
 2. Open Settings → Voice. Windows voices are listed as "Built into Windows", and every mood except Neutral says "approximated".
 3. Preview Calm and Urgent. Urgent is faster and higher.
 4. Download a Kokoro voice. The default switches to it unless a voice was chosen.

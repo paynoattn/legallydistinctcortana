@@ -16,7 +16,16 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build.workspace = true
 
 [dependencies]
+kernel.workspace = true
+platform-desktop.workspace = true
+platform-ports.workspace = true
+serde.workspace = true
+speech-application.workspace = true
+speech-infrastructure.workspace = true
 tauri.workspace = true
+tauri-plugin-global-shortcut.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true

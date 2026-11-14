@@ -9,9 +9,11 @@ pub(crate) fn stretch(samples: &[f32], step: u64) -> Vec<f32> {
     if step == 0 {
         return Vec::new();
     }
-    let input_len = u64::try_from(samples.len()).unwrap_or(u64::MAX);
-    let output_len = input_len.saturating_mul(ONE) / step;
-    (0..output_len)
+    let span = u64::try_from(samples.len())
+        .unwrap_or(u64::MAX)
+        .saturating_mul(ONE);
+    (0..span)
+        .take_while(|index| index.saturating_add(1).saturating_mul(step) <= span)
         .map(|index| sample_at(samples, index.saturating_mul(step)))
         .collect()
 }

@@ -1,8 +1,7 @@
 mod os;
 
 use std::fmt;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -58,19 +57,16 @@ type Shared = Arc<Mutex<Recording>>;
 
 type Ready = Sender<Result<Shared, CaptureError>>;
 
-const STOP_POLL: Duration = Duration::from_millis(250);
-
 /// Opens an input stream with `start` on a dedicated thread, which keeps the stream (not
 /// `Send` on every platform) alive until the capture is finished.
 fn open_with<S>(
     start: impl FnOnce() -> Result<(S, Shared), CaptureError> + Send + 'static,
 ) -> Result<Capture, CaptureError> {
     let (ready, opened) = mpsc::channel();
-    let stop = Arc::new(AtomicBool::new(false));
-    let flag = Arc::clone(&stop);
+    let (stop, stopped) = mpsc::channel();
     let holder = thread::Builder::new()
         .name("microphone-input".into())
-        .spawn(move || run_device(start, &flag, &ready))
+        .spawn(move || run_device(start, &stopped, &ready))
         .map_err(capture_error)?;
     let recording = opened.recv().map_err(|_| {
         CaptureError("the microphone thread stopped before opening the device".into())
@@ -84,44 +80,47 @@ fn open_with<S>(
 
 fn run_device<S>(
     start: impl FnOnce() -> Result<(S, Shared), CaptureError>,
-    stop: &AtomicBool,
+    stopped: &Receiver<()>,
     ready: &Ready,
 ) {
     match start() {
         Ok((stream, recording)) => {
             if ready.send(Ok(recording)).is_ok() {
-                hold_until_stopped(stream, stop);
+                hold_until_stopped(stream, stopped);
             }
         }
         Err(error) => drop(ready.send(Err(error))),
     }
 }
 
-fn hold_until_stopped<S>(stream: S, stop: &AtomicBool) {
-    while !stop.load(Ordering::SeqCst) {
-        thread::park_timeout(STOP_POLL);
-    }
+/// Keeps `stream` open until the capture's stop sender is dropped.
+fn hold_until_stopped<S>(stream: S, stopped: &Receiver<()>) {
+    stopped.recv().unwrap_or_default();
     drop(stream);
 }
 
 /// An open input stream: the recording it fills, and the thread that holds it open until
-/// `stop` is set.
+/// `stop` is dropped.
 #[derive(Debug)]
 struct Capture {
     recording: Shared,
-    stop: Arc<AtomicBool>,
+    stop: Sender<()>,
     holder: JoinHandle<()>,
 }
 
 impl Capture {
     /// Closes the stream, waits until its last buffer is in, and returns the recording.
     fn finish(self) -> Result<AudioClip, CaptureError> {
-        self.stop.store(true, Ordering::SeqCst);
-        self.holder.thread().unpark();
-        self.holder
+        let Self {
+            recording,
+            stop,
+            holder,
+        } = self;
+        drop(stop);
+        holder
             .join()
             .map_err(|_| CaptureError("the microphone thread stopped unexpectedly".into()))?;
-        lock(&self.recording).take_clip()
+        lock(&recording).take_clip()
     }
 }
 
@@ -198,7 +197,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     use super::*;
 
@@ -394,7 +393,7 @@ mod tests {
         let recording = Arc::new(Mutex::new(Recording::new(1_000, 1)));
         let capture = Capture {
             recording,
-            stop: Arc::new(AtomicBool::new(false)),
+            stop: mpsc::channel().0,
             holder: thread::spawn(|| panic!("device lost")),
         };
         assert_eq!(

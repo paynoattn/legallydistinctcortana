@@ -4,7 +4,18 @@
 # xtask is repo tooling, not product code. main.rs is wiring only (env, bind, signals);
 # it has no unit tests by design and is exercised end to end by `make qa`. crates/desktop is
 # the Tauri shell: wiring only, no logic; logic it needs lives in a feature crate.
-exclude_globs = ["xtask/**", "crates/app/src/main.rs", "crates/desktop/**"]
+#
+# Modules named `os` hold hardware-bound adapter code (clipboard, synthetic keys, audio
+# devices) that only runs against a real desktop, so no unit test can kill its mutants.
+# They stay thin (complexity <= 2), still count toward coverage and CRAP, and are exercised
+# on real hardware. Decision: docs/architecture/adr/0013-hardware-adapters-and-mutation.md.
+exclude_globs = [
+    "xtask/**",
+    "crates/app/src/main.rs",
+    "crates/desktop/**",
+    "crates/*/src/os.rs",
+    "crates/*/src/**/os.rs",
+]
 
 # Debug-level line tables only: mutants rebuild the tree once per mutant, so smaller
 # debug info is noticeably faster and does not change behavior.

@@ -5,10 +5,10 @@
 //! system bindings it runs on; everything with a decision in it is tested against fakes.
 
 mod clipboard_selection;
-mod system;
+mod os;
 
 pub use clipboard_selection::{
     COPY_TIMEOUT, ClipboardAccess, ClipboardSelectionReader, ClipboardSnapshot, KeyboardAccess,
     POLL_INTERVAL, RawFormat, Timing,
 };
-pub use system::{ArboardClipboard, EnigoKeyboard};
+pub use os::{ArboardClipboard, EnigoKeyboard};

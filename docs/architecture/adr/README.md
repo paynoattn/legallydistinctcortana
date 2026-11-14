@@ -16,3 +16,4 @@ One decision per file. Status is `proposed` until a human accepts it, then `acce
 | [0010](0010-license.md)                                | MIT OR Apache-2.0                                                                                | proposed |
 | [0011](0011-brand-neutral-code.md)                     | Brand-neutral code; product name in one place                                                    | accepted |
 | [0012](0012-unsafe-and-ffi.md)                         | `unsafe` only in FFI modules of allow-listed crates, with `// SAFETY:` comments                  | proposed |
+| [0013](0013-hardware-adapters-and-mutation.md)         | Hardware-bound adapter modules named `os` are excluded from mutation testing                     | accepted |

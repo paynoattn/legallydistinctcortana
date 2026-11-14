@@ -21,7 +21,7 @@ As a maintainer, I want `unsafe` code allowed only in two named crates, only in 
   - In allowed crates, fails if `unsafe` appears outside `src/ffi/`, if `expect(unsafe_code)` sits at the crate root, or if more than one module carries it.
   - Fails if a crate lists `windows` or `windows-sys` as a direct dependency (normal, dev, or build) without being named in `direct_only`. Transitive use through `cpal`, `tauri`, or `keyring` is fine.
 - `cargo xtask comments`: accepts exactly `// SAFETY: <non-empty reason>` on the line directly above an `unsafe` block or `unsafe impl`, only in `src/ffi/` of an `unsafe_allowed` crate. Every other comment is still rejected, including a `SAFETY:` comment anywhere else.
-- `Makefile` (`COVERAGE_IGNORE`) and `.cargo/mutants.toml` (`exclude_globs`): exclude `crates/*/src/ffi/**` from coverage and mutation, as composition roots are.
+- No new coverage or mutation exclusions: wrappers that need a real desktop go in `src/ffi/os.rs` (or `src/ffi/<name>/os.rs`), which `.cargo/mutants.toml` already excludes from mutation under [ADR 0013](../architecture/adr/0013-hardware-adapters-and-mutation.md). Coverage and CRAP still count them.
 - `docs/engineering/rust-gates.md`: a short "FFI" section with the thin-wrapper rule.
 
 Out of scope: the first FFI modules themselves (#006 DPAPI, #012 hotkeys), fuzzing (#078).
@@ -69,10 +69,10 @@ Feature: Unsafe and FFI policy
     Then it fails with "only platform-windows may depend directly on windows"
     And a crate that gets windows only through cpal passes
 
-  Scenario: FFI code is excluded from coverage and mutation
-    Given platform-windows/src/ffi/hook.rs has no unit tests
-    When "make coverage-rs" and "make mutate-rs" run
-    Then the file is not counted against the thresholds
+  Scenario: Hardware-bound FFI wrappers are excluded from mutation only
+    Given platform-windows/src/ffi/os.rs has no unit tests and each function has complexity at most 2
+    When "make crap-rs" and "make mutate-rs" run
+    Then the CRAP gate passes and the file produces no mutants
 ```
 
 ## Design notes
@@ -89,7 +89,7 @@ Feature: Unsafe and FFI policy
 2. Add `unsafe {}` to `crates/kernel/src/lib.rs` and run `make arch`. It fails naming kernel. Revert.
 3. Create `crates/platform-windows/src/ffi/mod.rs` with the module-level `expect` and one `unsafe` block preceded by `// SAFETY: test`. Run `make lint-rs arch`. Both pass. Remove the comment. clippy fails on `undocumented_unsafe_blocks`.
 4. Add `windows = "*"` to another crate's `Cargo.toml` and run `make arch`. It fails with the direct-dependency message. Revert.
-5. Run `make coverage-rs` with an untested file under `src/ffi/`. The thresholds still pass.
+5. Run `make crap-rs mutate-rs` with an untested `src/ffi/os.rs` whose functions have complexity at most 2. Both pass and `os.rs` produces no mutants.
 
 ## Definition of done
 

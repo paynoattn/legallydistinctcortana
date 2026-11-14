@@ -1,8 +1,30 @@
 import type { ReadAloudGateway } from '../application/ports.ts';
 import type { MoodId } from '../domain/mood.ts';
 import { type ReadingStatus, type Selection, WAITING } from '../domain/read-aloud-state.ts';
+import type { Voice } from '../domain/voice.ts';
 
 export const NOTHING_SELECTED = 'Select some text first, then press the read-aloud shortcut.';
+
+export const FAKE_VOICES: readonly Voice[] = [
+  {
+    name: 'en_US-amy-medium',
+    description: 'amy (medium)',
+    languages: ['en_US'],
+    speakers: [],
+  },
+  {
+    name: 'en_US-libritts-high',
+    description: 'libritts (high)',
+    languages: ['en_US'],
+    speakers: ['p239', 'p240'],
+  },
+  {
+    name: 'de_DE-thorsten-medium',
+    description: 'thorsten (medium)',
+    languages: ['de_DE'],
+    speakers: [],
+  },
+];
 
 type Listener<T> = (value: T) => void;
 
@@ -34,6 +56,10 @@ export class FakeReadAloudGateway implements ReadAloudGateway {
   read(mood: MoodId): Promise<void> {
     this.#onStatus?.({ kind: 'reading', mood });
     return Promise.resolve();
+  }
+
+  listVoices(): Promise<readonly Voice[]> {
+    return Promise.resolve(FAKE_VOICES);
   }
 
   stop(): Promise<void> {

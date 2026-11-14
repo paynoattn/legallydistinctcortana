@@ -98,7 +98,7 @@ fn reads_a_selection_sentence_by_sentence_through_a_wyoming_server() {
     let service = service(port, "Good morning.\nTwo emails need you.", &speakers);
     assert_eq!(service.capture_selection().unwrap().char_count, 34);
     assert_eq!(
-        service.read_captured(Mood::Alert),
+        service.read_captured(Mood::Alert, None),
         Ok(ReadOutcome::Finished)
     );
     assert_eq!(
@@ -122,7 +122,7 @@ fn an_offline_voice_server_is_reported_with_its_address() {
     let speakers = Arc::new(Speakers::default());
     let service = service(port, "Hello.", &speakers);
     service.capture_selection().unwrap();
-    let error = service.read_captured(Mood::Neutral).unwrap_err();
+    let error = service.read_captured(Mood::Neutral, None).unwrap_err();
     assert!(
         matches!(
             &error,

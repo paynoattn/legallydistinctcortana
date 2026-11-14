@@ -1,5 +1,6 @@
 import type { MoodId } from '../domain/mood.ts';
 import { IDLE, type ReadingStatus, type Selection, WAITING } from '../domain/read-aloud-state.ts';
+import type { VoiceChoice } from '../domain/voice.ts';
 import type { ReadAloudGateway } from './ports.ts';
 
 type Listener = () => void;
@@ -13,10 +14,12 @@ export interface ReadAloudSnapshot {
 export class ReadAloudStore {
   readonly #listeners = new Set<Listener>();
   readonly #gateway: ReadAloudGateway;
+  readonly #currentVoice: () => VoiceChoice | null;
   #snapshot: ReadAloudSnapshot = { selection: WAITING, status: IDLE, round: 0 };
 
-  constructor(gateway: ReadAloudGateway) {
+  constructor(gateway: ReadAloudGateway, currentVoice: () => VoiceChoice | null = () => null) {
     this.#gateway = gateway;
+    this.#currentVoice = currentVoice;
     gateway.onSelection((selection) => {
       this.#commit({ selection, status: IDLE, round: this.#snapshot.round + 1 });
     });
@@ -36,7 +39,7 @@ export class ReadAloudStore {
 
   readonly choose = (mood: MoodId): void => {
     this.#commit({ ...this.#snapshot, status: { kind: 'reading', mood } });
-    this.#gateway.read(mood).catch(this.#fail);
+    this.#gateway.read(mood, this.#currentVoice()).catch(this.#fail);
   };
 
   readonly stop = (): void => {

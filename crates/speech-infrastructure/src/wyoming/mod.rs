@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Map, Value};
 use speech_application::ports::{SpeechSynthesizer, SynthesisError};
-use speech_domain::AudioClip;
+use speech_domain::{AudioClip, Voice, VoiceChoice};
 
 use crate::WyomingConfig;
 use codec::{CodecError, Event, read_event, write_event};
@@ -63,15 +63,60 @@ impl WyomingSynthesizer {
         Ok(stream)
     }
 
-    fn request(&self, sentence: &str) -> Map<String, Value> {
+    fn request(&self, sentence: &str, voice: Option<&VoiceChoice>) -> Map<String, Value> {
         let mut data = Map::new();
         data.insert("text".into(), Value::from(sentence));
-        if let Some(voice) = &self.config.voice {
-            let mut name = Map::new();
-            name.insert("name".into(), Value::from(voice.as_str()));
-            data.insert("voice".into(), Value::Object(name));
+        if let Some(voice) = self.voice_data(voice) {
+            data.insert("voice".into(), Value::Object(voice));
         }
         data
+    }
+
+    fn voice_data(&self, voice: Option<&VoiceChoice>) -> Option<Map<String, Value>> {
+        let (name, speaker) = match voice {
+            Some(choice) => (choice.name(), choice.speaker()),
+            None => (self.config.voice.as_deref()?, None),
+        };
+        let mut data = Map::new();
+        data.insert("name".into(), Value::from(name));
+        if let Some(speaker) = speaker {
+            data.insert("speaker".into(), Value::from(speaker));
+        }
+        Some(data)
+    }
+
+    fn exchange(&self, request: &Event) -> Result<BufReader<DeadlineReader>, SynthesisError> {
+        let stream = self.connect()?;
+        let mut writer = stream
+            .try_clone()
+            .map_err(|error| self.unreachable(&error))?;
+        write_event(&mut writer, request).map_err(|error| self.unreachable(&error))?;
+        Ok(BufReader::new(DeadlineReader {
+            stream,
+            deadline: Instant::now() + self.config.io_timeout,
+            limit: self.config.io_timeout,
+        }))
+    }
+
+    fn speak(
+        &self,
+        sentence: &str,
+        voice: Option<&VoiceChoice>,
+    ) -> Result<AudioClip, SynthesisError> {
+        let mut reader = self.exchange(&Event {
+            kind: "synthesize".into(),
+            data: self.request(sentence, voice),
+            payload: Vec::new(),
+        })?;
+        let mut audio = AudioCollector::default();
+        while let Some(event) = read_event(&mut reader).map_err(|error| self.codec_error(error))? {
+            if audio.accept(event)? == Flow::Done {
+                return audio.finish();
+            }
+        }
+        Err(SynthesisError::Protocol(
+            "the server closed the connection before audio-stop".into(),
+        ))
     }
 
     fn unreachable(&self, error: &io::Error) -> SynthesisError {
@@ -91,31 +136,69 @@ impl WyomingSynthesizer {
 
 impl SpeechSynthesizer for WyomingSynthesizer {
     fn synthesize(&self, sentence: &str) -> Result<AudioClip, SynthesisError> {
-        let stream = self.connect()?;
-        let mut writer = stream
-            .try_clone()
-            .map_err(|error| self.unreachable(&error))?;
-        let request = Event {
-            kind: "synthesize".into(),
-            data: self.request(sentence),
+        self.speak(sentence, None)
+    }
+
+    fn synthesize_in(
+        &self,
+        sentence: &str,
+        voice: &VoiceChoice,
+    ) -> Result<AudioClip, SynthesisError> {
+        self.speak(sentence, Some(voice))
+    }
+
+    fn voices(&self) -> Result<Vec<Voice>, SynthesisError> {
+        let mut reader = self.exchange(&Event {
+            kind: "describe".into(),
+            data: Map::new(),
             payload: Vec::new(),
-        };
-        write_event(&mut writer, &request).map_err(|error| self.unreachable(&error))?;
-        let mut reader = BufReader::new(DeadlineReader {
-            stream,
-            deadline: Instant::now() + self.config.io_timeout,
-            limit: self.config.io_timeout,
-        });
-        let mut audio = AudioCollector::default();
+        })?;
         while let Some(event) = read_event(&mut reader).map_err(|error| self.codec_error(error))? {
-            if audio.accept(event)? == Flow::Done {
-                return audio.finish();
+            if event.kind == "info" {
+                return Ok(voices_from_info(&event.data));
             }
         }
         Err(SynthesisError::Protocol(
-            "the server closed the connection before audio-stop".into(),
+            "the server closed the connection before describing its voices".into(),
         ))
     }
+}
+
+/// Every voice of every text-to-speech program in a Wyoming `info` event. Entries without a
+/// name are skipped; missing descriptions, languages, or speakers are left empty.
+fn voices_from_info(info: &Map<String, Value>) -> Vec<Voice> {
+    info.get("tts")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|program| program.get("voices").and_then(Value::as_array))
+        .flatten()
+        .filter_map(voice_from)
+        .collect()
+}
+
+fn voice_from(entry: &Value) -> Option<Voice> {
+    Some(Voice {
+        name: entry.get("name")?.as_str()?.to_owned(),
+        description: entry
+            .get("description")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        languages: strings(entry.get("languages"), Value::as_str),
+        speakers: strings(entry.get("speakers"), |speaker| {
+            speaker.get("name").and_then(Value::as_str)
+        }),
+    })
+}
+
+fn strings(list: Option<&Value>, text: impl Fn(&Value) -> Option<&str>) -> Vec<String> {
+    list.and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(text)
+        .map(str::to_owned)
+        .collect()
 }
 
 /// Reads from the socket, but never past `deadline`: every read gets only the time that is
@@ -668,6 +751,309 @@ mod tests {
         assert!(
             matches!(&result, Err(SynthesisError::Unreachable { address, .. }) if address == "host.invalid:1"),
             "{result:?}"
+        );
+    }
+
+    fn choice(name: &str, speaker: Option<&str>) -> VoiceChoice {
+        VoiceChoice::parse(Some(name), speaker).unwrap()
+    }
+
+    fn voice_data(configured: Option<&str>, chosen: Option<&VoiceChoice>) -> Option<Value> {
+        let synth = WyomingSynthesizer::new(config(1, configured));
+        synth.voice_data(chosen).map(Value::Object)
+    }
+
+    #[test]
+    fn a_chosen_voice_with_a_speaker_sends_the_name_and_the_speaker() {
+        assert_eq!(
+            voice_data(None, Some(&choice("en_US-libritts-high", Some("p239")))),
+            Some(json!({"name": "en_US-libritts-high", "speaker": "p239"}))
+        );
+    }
+
+    #[test]
+    fn a_chosen_voice_without_a_speaker_sends_only_the_name() {
+        assert_eq!(
+            voice_data(None, Some(&choice("en_US-amy-medium", None))),
+            Some(json!({"name": "en_US-amy-medium"}))
+        );
+    }
+
+    #[test]
+    fn a_chosen_voice_wins_over_the_configured_one() {
+        assert_eq!(
+            voice_data(Some("configured"), Some(&choice("chosen", None))),
+            Some(json!({"name": "chosen"}))
+        );
+    }
+
+    #[test]
+    fn without_a_choice_the_configured_voice_is_used() {
+        assert_eq!(
+            voice_data(Some("configured"), None),
+            Some(json!({"name": "configured"}))
+        );
+    }
+
+    #[test]
+    fn without_a_choice_or_a_configured_voice_no_voice_is_sent() {
+        assert_eq!(voice_data(None, None), None);
+    }
+
+    fn synthesize_in(voice: &VoiceChoice, configured: Option<&str>) -> Event {
+        let (port, server) = serve(vec![
+            ("audio-chunk", format(), vec![0, 0]),
+            ("audio-stop", json!({}), vec![]),
+        ]);
+        let clip = WyomingSynthesizer::new(config(port, configured))
+            .synthesize_in("Hi.", voice)
+            .unwrap();
+        assert_eq!(clip.samples(), [0.0]);
+        server.join().unwrap()
+    }
+
+    #[test]
+    fn synthesizing_in_a_voice_sends_the_voice_and_the_speaker() {
+        let request = synthesize_in(&choice("en_US-libritts-high", Some("p240")), Some("other"));
+        assert_eq!(request.kind, "synthesize");
+        assert_eq!(
+            request.data,
+            object(&json!({
+                "text": "Hi.",
+                "voice": {"name": "en_US-libritts-high", "speaker": "p240"}
+            }))
+        );
+    }
+
+    #[test]
+    fn synthesizing_in_a_voice_without_a_speaker_sends_only_the_name() {
+        let request = synthesize_in(&choice("en_US-amy-medium", None), None);
+        assert_eq!(
+            request.data,
+            object(&json!({"text": "Hi.", "voice": {"name": "en_US-amy-medium"}}))
+        );
+    }
+
+    #[test]
+    fn synthesizing_in_a_voice_reports_a_server_that_hangs_up() {
+        let (port, server) = serve(vec![("audio-start", format(), vec![])]);
+        let result = WyomingSynthesizer::new(config(port, None))
+            .synthesize_in("Hi.", &choice("en_US-amy-medium", None));
+        server.join().unwrap();
+        assert_eq!(
+            result,
+            Err(SynthesisError::Protocol(
+                "the server closed the connection before audio-stop".into()
+            ))
+        );
+    }
+
+    fn joined_within(server: JoinHandle<Event>) -> std::sync::mpsc::Receiver<Event> {
+        let (done, finished) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            if let Ok(event) = server.join() {
+                drop(done.send(event));
+            }
+        });
+        finished
+    }
+
+    fn voices(replies: Vec<Reply>) -> (Result<Vec<Voice>, SynthesisError>, Event) {
+        let (port, server) = serve(replies);
+        let server = joined_within(server);
+        let result = WyomingSynthesizer::new(config(port, Some("configured"))).voices();
+        (result, server.recv_timeout(Duration::from_secs(5)).unwrap())
+    }
+
+    fn texts(items: &[&str]) -> Vec<String> {
+        items.iter().map(|item| (*item).to_owned()).collect()
+    }
+
+    fn voice(name: &str, languages: &[&str]) -> Voice {
+        Voice {
+            name: name.into(),
+            description: String::new(),
+            languages: texts(languages),
+            speakers: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn asks_for_the_voices_with_describe_and_parses_the_info() {
+        let info = json!({"tts": [{"name": "piper", "voices": [
+            {
+                "name": "en_US-amy-medium",
+                "description": "amy (medium)",
+                "languages": ["en_US"],
+                "speakers": null
+            },
+            {
+                "name": "en_US-libritts-high",
+                "description": "libritts (high)",
+                "languages": ["en_US", "en"],
+                "speakers": [{"name": "p239"}, {"name": "p240"}]
+            }
+        ]}]});
+        let (result, request) = voices(vec![("info", info, vec![])]);
+        assert_eq!(request.kind, "describe");
+        assert!(request.data.is_empty(), "describe carries no data");
+        assert!(request.payload.is_empty(), "describe carries no payload");
+        assert_eq!(
+            result,
+            Ok(vec![
+                Voice {
+                    description: "amy (medium)".into(),
+                    ..voice("en_US-amy-medium", &["en_US"])
+                },
+                Voice {
+                    description: "libritts (high)".into(),
+                    speakers: texts(&["p239", "p240"]),
+                    ..voice("en_US-libritts-high", &["en_US", "en"])
+                },
+            ])
+        );
+    }
+
+    #[test]
+    fn skips_other_events_until_the_info_arrives() {
+        let info = json!({"tts": [{"voices": [{"name": "a"}]}]});
+        let (result, _) = voices(vec![
+            ("audio-start", format(), vec![]),
+            ("error", json!({"text": "ignored"}), vec![]),
+            ("info", info, vec![]),
+        ]);
+        assert_eq!(result, Ok(vec![voice("a", &[])]));
+    }
+
+    #[test]
+    fn an_info_without_tts_offers_no_voices() {
+        let (result, _) = voices(vec![("info", json!({"asr": []}), vec![])]);
+        assert_eq!(result, Ok(Vec::new()));
+    }
+
+    #[test]
+    fn reports_a_server_that_closes_before_describing_its_voices() {
+        let (result, request) = voices(vec![]);
+        assert_eq!(request.kind, "describe");
+        assert_eq!(
+            result,
+            Err(SynthesisError::Protocol(
+                "the server closed the connection before describing its voices".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn reports_a_server_that_closes_after_unrelated_events() {
+        let (result, _) = voices(vec![("audio-start", format(), vec![])]);
+        assert_eq!(
+            result,
+            Err(SynthesisError::Protocol(
+                "the server closed the connection before describing its voices".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn reports_an_unreachable_server_when_asking_for_voices() {
+        let port = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let result = WyomingSynthesizer::new(config(port, None)).voices();
+        assert!(
+            matches!(&result, Err(SynthesisError::Unreachable { address, .. }) if *address == format!("127.0.0.1:{port}")),
+            "{result:?}"
+        );
+    }
+
+    fn from_info(info: &Value) -> Vec<Voice> {
+        voices_from_info(&object(info))
+    }
+
+    #[test]
+    fn info_voices_skip_entries_without_a_name() {
+        let info = json!({"tts": [{"voices": [
+            {"description": "nameless"},
+            {"name": 7},
+            {"name": null},
+            "plain",
+            {"name": "kept"}
+        ]}]});
+        assert_eq!(from_info(&info), [voice("kept", &[])]);
+    }
+
+    #[test]
+    fn info_voices_leave_missing_parts_empty() {
+        let info = json!({"tts": [{"voices": [{"name": "bare"}]}]});
+        assert_eq!(from_info(&info), [voice("bare", &[])]);
+    }
+
+    #[test]
+    fn info_voices_leave_parts_of_the_wrong_type_empty() {
+        let info = json!({"tts": [{"voices": [
+            {"name": "odd", "description": 3, "languages": "en_US", "speakers": {"name": "p1"}}
+        ]}]});
+        assert_eq!(from_info(&info), [voice("odd", &[])]);
+    }
+
+    #[test]
+    fn info_languages_keep_only_the_text_entries() {
+        let info = json!({"tts": [{"voices": [
+            {"name": "a", "languages": ["en_US", 3, null, "de_DE"]}
+        ]}]});
+        assert_eq!(from_info(&info), [voice("a", &["en_US", "de_DE"])]);
+    }
+
+    #[test]
+    fn info_speakers_are_objects_with_a_name() {
+        let info = json!({"tts": [{"voices": [{"name": "a", "speakers": [
+            {"name": "p1", "id": 1},
+            {"id": 2},
+            {"name": 3},
+            "p4",
+            {"name": "p5"}
+        ]}]}]});
+        assert_eq!(
+            from_info(&info),
+            [Voice {
+                speakers: texts(&["p1", "p5"]),
+                ..voice("a", &[])
+            }]
+        );
+    }
+
+    #[test]
+    fn info_voices_come_from_every_tts_program_in_order() {
+        let info = json!({"tts": [
+            {"name": "one", "voices": [{"name": "a"}, {"name": "b"}]},
+            {"name": "empty", "voices": []},
+            {"name": "unlisted"},
+            {"name": "bad", "voices": "none"},
+            {"name": "two", "voices": [{"name": "c"}]}
+        ]});
+        let names: Vec<String> = from_info(&info)
+            .into_iter()
+            .map(|voice| voice.name)
+            .collect();
+        assert_eq!(names, ["a", "b", "c"]);
+    }
+
+    #[test]
+    fn info_without_a_list_of_programs_has_no_voices() {
+        assert!(from_info(&json!({})).is_empty(), "no tts at all");
+        assert!(
+            from_info(&json!({"tts": "piper"})).is_empty(),
+            "tts is not a list"
+        );
+        assert!(
+            from_info(&json!({"tts": {"voices": [{"name": "a"}]}})).is_empty(),
+            "tts is an object"
+        );
+        assert!(
+            from_info(&json!({"tts": [1, null]})).is_empty(),
+            "programs are not objects"
         );
     }
 }

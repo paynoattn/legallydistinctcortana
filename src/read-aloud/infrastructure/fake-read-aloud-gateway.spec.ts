@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ReadingStatus, Selection } from '../domain/read-aloud-state.ts';
-import { FakeReadAloudGateway, NOTHING_SELECTED } from './fake-read-aloud-gateway.ts';
+import { FAKE_VOICES, FakeReadAloudGateway, NOTHING_SELECTED } from './fake-read-aloud-gateway.ts';
 
 function selectionOf(text: string | null): Selection[] {
   const gateway = new FakeReadAloudGateway(text);
@@ -35,6 +35,16 @@ describe('FakeReadAloudGateway', () => {
     await gateway.read('whisper');
     await gateway.stop();
     expect(seen).toEqual([{ kind: 'reading', mood: 'whisper' }, { kind: 'stopped' }]);
+  });
+
+  it('offers the fake voices', async () => {
+    const gateway = new FakeReadAloudGateway('hi');
+    expect(await gateway.listVoices()).toBe(FAKE_VOICES);
+    expect(FAKE_VOICES.map((voice) => voice.name)).toEqual([
+      'en_US-amy-medium',
+      'en_US-libritts-high',
+      'de_DE-thorsten-medium',
+    ]);
   });
 
   it('goes back to waiting when dismissed', async () => {

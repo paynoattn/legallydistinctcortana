@@ -1,6 +1,6 @@
 //! What the read-aloud use cases need from the outside world.
 
-use speech_domain::AudioClip;
+use speech_domain::{AudioClip, Voice, VoiceChoice};
 use thiserror::Error;
 
 use crate::CancelFlag;
@@ -37,6 +37,27 @@ pub trait SpeechSynthesizer: Send + Sync {
     ///
     /// Any [`SynthesisError`].
     fn synthesize(&self, sentence: &str) -> Result<AudioClip, SynthesisError>;
+
+    /// Audio for one sentence in `voice`. A synthesizer with a single voice may ignore the
+    /// choice, which is what the default does.
+    ///
+    /// # Errors
+    ///
+    /// Any [`SynthesisError`].
+    fn synthesize_in(
+        &self,
+        sentence: &str,
+        _voice: &VoiceChoice,
+    ) -> Result<AudioClip, SynthesisError> {
+        self.synthesize(sentence)
+    }
+
+    /// The voices this synthesizer offers; empty when there is nothing to choose from.
+    ///
+    /// # Errors
+    ///
+    /// Any [`SynthesisError`].
+    fn voices(&self) -> Result<Vec<Voice>, SynthesisError>;
 }
 
 /// Plays audio on the user's speakers, in the order it is queued.
@@ -58,6 +79,41 @@ pub trait AudioOutput: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct OneVoice;
+
+    impl SpeechSynthesizer for OneVoice {
+        fn synthesize(&self, sentence: &str) -> Result<AudioClip, SynthesisError> {
+            if sentence == "fail" {
+                return Err(SynthesisError::Server("no voice".into()));
+            }
+            Ok(AudioClip::from_samples(1_000, vec![0.5; sentence.len()]).unwrap())
+        }
+
+        fn voices(&self) -> Result<Vec<Voice>, SynthesisError> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[test]
+    fn a_synthesizer_without_voices_speaks_in_its_only_voice() {
+        let choice = VoiceChoice::parse(Some("en_US-amy-medium"), None).unwrap();
+        let clip = OneVoice.synthesize_in("abc", &choice).unwrap();
+        assert_eq!(clip.samples().len(), 3);
+        assert_eq!(
+            clip.samples(),
+            OneVoice.synthesize("abc").unwrap().samples()
+        );
+    }
+
+    #[test]
+    fn a_failure_in_the_only_voice_is_passed_on() {
+        let choice = VoiceChoice::parse(Some("en_US-amy-medium"), None).unwrap();
+        assert_eq!(
+            OneVoice.synthesize_in("fail", &choice).unwrap_err(),
+            SynthesisError::Server("no voice".into())
+        );
+    }
 
     #[test]
     fn error_messages_are_readable() {

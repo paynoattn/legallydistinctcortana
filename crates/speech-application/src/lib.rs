@@ -10,3 +10,4 @@ pub use service::{
     PREVIEW_CHARS, ReadAloudError, ReadAloudService, ReadOutcome, ReadingTicket, SelectionPreview,
     ShortcutOutcome,
 };
+pub use speech_domain::{Voice, VoiceChoice};

@@ -16,6 +16,7 @@ pub fn run() -> Result<(), tauri::Error> {
         .invoke_handler(tauri::generate_handler![
             read_aloud::read_aloud,
             read_aloud::current_selection,
+            read_aloud::list_voices,
             read_aloud::stop_reading,
             read_aloud::dismiss_read_aloud
         ])

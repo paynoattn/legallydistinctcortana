@@ -2,6 +2,7 @@ import { z } from 'zod/mini';
 import type { ReadAloudGateway } from '../application/ports.ts';
 import { isMoodId, type MoodId } from '../domain/mood.ts';
 import type { ReadingStatus, Selection } from '../domain/read-aloud-state.ts';
+import type { Voice, VoiceChoice } from '../domain/voice.ts';
 
 export type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 export type Listen = (
@@ -12,6 +13,7 @@ export type Listen = (
 export const SELECTION_EVENT = 'read-aloud:selection';
 export const STATUS_EVENT = 'read-aloud:status';
 export const CURRENT_SELECTION_COMMAND = 'current_selection';
+export const LIST_VOICES_COMMAND = 'list_voices';
 export const UNEXPECTED_MESSAGE = 'The app sent an update this window does not understand.';
 
 const moodSchema = z.custom<MoodId>(isMoodId);
@@ -31,6 +33,15 @@ const statusSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('stopped') }),
   z.object({ kind: z.literal('failed'), message: z.string() }),
 ]);
+
+const voicesSchema = z.array(
+  z.object({
+    name: z.string(),
+    description: z.string(),
+    languages: z.array(z.string()),
+    speakers: z.array(z.string()),
+  }),
+);
 
 interface Failure {
   readonly kind: 'failed';
@@ -78,8 +89,18 @@ export class TauriReadAloudGateway implements ReadAloudGateway {
     });
   }
 
-  async read(mood: MoodId): Promise<void> {
-    await this.#invoke('read_aloud', { mood });
+  async read(mood: MoodId, voice: VoiceChoice | null): Promise<void> {
+    await this.#invoke('read_aloud', {
+      request: { mood, voice: voice?.name ?? null, speaker: voice?.speaker ?? null },
+    });
+  }
+
+  async listVoices(): Promise<readonly Voice[]> {
+    const parsed = voicesSchema.safeParse(await this.#invoke(LIST_VOICES_COMMAND));
+    if (!parsed.success) {
+      throw new Error(UNEXPECTED_MESSAGE);
+    }
+    return parsed.data;
   }
 
   async stop(): Promise<void> {

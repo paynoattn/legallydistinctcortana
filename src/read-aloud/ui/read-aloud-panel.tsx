@@ -1,14 +1,17 @@
 import { type ReactElement, useSyncExternalStore } from 'react';
 import type { ReadAloudStore } from '../application/read-aloud-store.ts';
+import type { VoiceStore } from '../application/voice-store.ts';
 import { describeLength, type Selection } from '../domain/read-aloud-state.ts';
 import { onEscape } from './escape-key.ts';
 import { focusOnMount } from './focus-on-mount.ts';
 import { MoodMenu } from './mood-menu.tsx';
 import { ReadingStatusLine } from './reading-status.tsx';
+import { VoicePicker } from './voice-picker.tsx';
 import './read-aloud.css';
 
 interface ReadAloudPanelProps {
   readonly store: ReadAloudStore;
+  readonly voices: VoiceStore;
 }
 
 interface CloseButtonProps {
@@ -41,7 +44,7 @@ function SelectionPrompt({ selection, onDismiss }: SelectionPromptProps): ReactE
   );
 }
 
-export function ReadAloudPanel({ store }: ReadAloudPanelProps): ReactElement {
+export function ReadAloudPanel({ store, voices }: ReadAloudPanelProps): ReactElement {
   const { selection, status, round } = useSyncExternalStore(store.subscribe, store.getSnapshot);
   return (
     <main className="read-aloud" aria-labelledby="read-aloud-title">
@@ -54,6 +57,7 @@ export function ReadAloudPanel({ store }: ReadAloudPanelProps): ReactElement {
             <figcaption>{describeLength(selection.charCount)}</figcaption>
           </figure>
           <MoodMenu key={round} onChoose={store.choose} onDismiss={store.dismiss} />
+          <VoicePicker store={voices} onDismiss={store.dismiss} />
         </>
       ) : (
         <SelectionPrompt key={round} selection={selection} onDismiss={store.dismiss} />

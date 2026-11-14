@@ -80,7 +80,7 @@ Feature: Spoken alerts
 ## QA procedure
 
 1. Settings → Notifications → Reminders: turn on "Speak this" and set the mood to Neutral. Create "in 1 minute water the plants". Observe the chime, then "It's <time>. Water the plants." spoken, plus a toast.
-2. Select a long paragraph in Edge and press Win+Alt+R to read it. Create a reminder due during reading. Observe read-aloud pausing for the alert and resuming.
+2. Select a long paragraph in Edge and press Ctrl+Alt+R to read it. Create a reminder due during reading. Observe read-aloud pausing for the alert and resuming.
 3. Hold the dictation key while a reminder comes due. Observe a toast only.
 4. Lock the PC (Win+L) before a reminder is due. Unlock after. Observe that nothing was spoken (ask someone nearby, or check the delivery log) and the toast is present.
 5. Let an alert start speaking and press Esc. Observe that it stops at once.

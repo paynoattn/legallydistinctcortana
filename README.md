@@ -32,6 +32,20 @@ make gauntlet       # check + 100% mutation score + scripted QA
 
 Every gate has a Rust (`-rs`) and a UI (`-ui`) half, for example `make lint-ui` or `make coverage-rs`. `make help` lists them.
 
+### Try read aloud
+
+The first working feature: select text in any app, press **Ctrl+Alt+R**, and pick a mood (click, arrow keys, or 1–9). It speaks through a [Wyoming](https://github.com/rhasspy/wyoming) Piper server you run yourself, the same one `voice.py` uses:
+
+```sh
+# on any machine on your LAN or tailnet
+docker run -p 10200:10200 rhasspy/wyoming-piper --voice en_US-amy-medium
+
+# on the Windows PC
+VOICE_HOST=my-mac make dev   # VOICE_TTS_PORT (default 10200), VOICE_TTS_VOICE, READ_ALOUD_SHORTCUT
+```
+
+The moods are approximated with speed, loudness, and pauses until the expressive voice model lands. The manual test plan is in [`qa/procedures/read-aloud.md`](qa/procedures/read-aloud.md).
+
 Contributors and coding agents start with [`AGENTS.md`](AGENTS.md). Stories go through the `gauntlet` skill (specifier → coder → cleaner → hardener → qa), and the agent hooks stop an agent from finishing while `make check` is red.
 
 ## License

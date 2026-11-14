@@ -10,7 +10,7 @@ As a writer, I want to hold a key anywhere in Windows to dictate and release it 
 
 ## Context
 
-[OS integration: `HotkeySource`](../architecture/os-integration.md): a low-level keyboard hook (`SetWindowsHookExW(WH_KEYBOARD_LL)`) on a dedicated thread with its own message loop, because push-to-talk needs key up as well as key down and `RegisterHotKey` reports presses only. The callback posts to a channel and returns in under 1 ms, or Windows removes the hook. Defaults: hold Right Ctrl (dictate), Win+Alt+Space (assistant), Win+Alt+R (read selection). [MVP risks](../product/mvp-plan.md#risks): some antivirus flags low-level hooks; `RegisterHotKey` is the fallback for toggle mode.
+[OS integration: `HotkeySource`](../architecture/os-integration.md): a low-level keyboard hook (`SetWindowsHookExW(WH_KEYBOARD_LL)`) on a dedicated thread with its own message loop, because push-to-talk needs key up as well as key down and `RegisterHotKey` reports presses only. The callback posts to a channel and returns in under 1 ms, or Windows removes the hook. Defaults: hold Right Ctrl (dictate), Win+Alt+Space (assistant), Ctrl+Alt+R (read selection). [MVP risks](../product/mvp-plan.md#risks): some antivirus flags low-level hooks; `RegisterHotKey` is the fallback for toggle mode.
 
 ## Scope
 

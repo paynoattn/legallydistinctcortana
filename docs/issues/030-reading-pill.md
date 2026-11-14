@@ -73,7 +73,7 @@ Feature: Reading pill
 
 ## QA procedure
 
-1. In Edge, read a long article aloud through the extension (#029) or Win+Alt+R. The pill appears next to the mark with the site name.
+1. In Edge, read a long article aloud through the extension (#029) or Ctrl+Alt+R. The pill appears next to the mark with the site name.
 2. Click Pause, then Resume. Reading pauses and continues from the same place. The browser keeps focus.
 3. Click speed twice. From the next sentence, reading is faster.
 4. Click the mood button. From the next sentence, the mood changes.

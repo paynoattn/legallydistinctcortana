@@ -15,10 +15,23 @@ tasks-domain = { path = "crates/tasks-domain" }
 tasks-application = { path = "crates/tasks-application" }
 tasks-infrastructure = { path = "crates/tasks-infrastructure" }
 http-api = { path = "crates/http-api" }
+kernel = { path = "crates/kernel" }
+speech-domain = { path = "crates/speech-domain" }
+speech-application = { path = "crates/speech-application" }
+speech-infrastructure = { path = "crates/speech-infrastructure" }
+platform-ports = { path = "crates/platform-ports" }
+platform-desktop = { path = "crates/platform-desktop" }
 
 # Desktop shell (Tauri 2). See docs/architecture/overview.md for the target crate layout.
 tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }
+tauri-plugin-global-shortcut = "2"
+
+# Read-aloud MVP: speaker output, clipboard, synthetic Ctrl+C (all safe, cross-platform APIs).
+arboard = { version = "3.7.0", default-features = false }
+clipboard-win = "5.4.3"
+cpal = "0.18.2"
+enigo = "0.6.1"
 
 # No default features: the default `tower-log` turns on `tracing/log`, whose log-compat
 # branches make every `tracing::info!` call score 8 on clippy's cognitive_complexity.

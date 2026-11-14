@@ -40,9 +40,9 @@ function recordBrowserErrors(page: Page, errors: string[]): void {
   });
 }
 
-async function waitForApp(page: Page, errors: readonly string[]): Promise<void> {
+async function waitForApp(page: Page, errors: readonly string[], heading = 'Tasks'): Promise<void> {
   try {
-    await page.getByRole('heading', { name: 'Tasks' }).waitFor({ timeout: APP_READY_TIMEOUT_MS });
+    await page.getByRole('heading', { name: heading }).waitFor({ timeout: APP_READY_TIMEOUT_MS });
   } catch (error) {
     const reasons = errors.length > 0 ? errors.join('\n') : String(error);
     throw new Error(`the app did not render at ${page.url()}:\n${reasons}`, { cause: error });
@@ -66,6 +66,15 @@ export class TasksWorld extends World {
     recordBrowserErrors(this.#page, this.errors);
     await this.#page.goto(baseUrl);
     await waitForApp(this.#page, this.errors);
+  }
+
+  async openReadAloud(selection: string): Promise<void> {
+    const context = await startedBrowser().newContext();
+    this.#page = await context.newPage();
+    recordBrowserErrors(this.#page, this.errors);
+    const query = new URLSearchParams({ view: 'read-aloud', selection });
+    await this.#page.goto(`${baseUrl}?${query.toString()}`);
+    await waitForApp(this.#page, this.errors, 'Read aloud');
   }
 
   async reload(): Promise<void> {
@@ -116,7 +125,7 @@ AfterAll(async function () {
   await server?.close();
 });
 
-Before(async function (this: TasksWorld) {
+Before({ tags: 'not @read-aloud' }, async function (this: TasksWorld) {
   await this.open();
 });
 

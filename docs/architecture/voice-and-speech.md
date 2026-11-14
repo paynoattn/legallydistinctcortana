@@ -66,16 +66,19 @@ hotkey (low-level keyboard hook: key down and key up)
 | `rate`, `pitch_semitones`, `energy_db` | Prosody fallback for engines without emotion control                  |
 | `pause_scale`                          | Multiplier for sentence and comma pauses                              |
 
+**Shipped so far:** `speech-domain::Prosody` implements the prosody fallback as three values per mood: speed (applied by resampling, so pitch rises with speed), gain in dB, and the pause after each sentence. Mad, for example, is 1.25× speed, 0 dB, and an 80 ms pause. Gains never go above 0 dB: synthesizers already peak near full scale, so Neutral sits at −6 dB and the loud moods use that headroom instead of clipping. The table is in `crates/speech-domain/src/prosody.rs`. Because speed and pitch are coupled, the moods sound approximate until the expressive model lands.
+
 Each engine adapter translates the style vector into what it supports. The UI marks each mood as "native" or "approximated" for the current voice.
 
 ### Engines (in infer-host)
 
-| Engine                                   | Role                                                | License                                             | Mood support                 |
-| ---------------------------------------- | --------------------------------------------------- | --------------------------------------------------- | ---------------------------- |
-| Kokoro-82M (ONNX)                        | Default voice, fast on CPU and any GPU              | Apache-2.0                                          | Prosody fallback             |
-| Piper                                    | Low-end hardware, many languages                    | MIT (voices vary)                                   | Prosody fallback             |
-| **Expressive model** (fine-tuned, below) | Mood voice for read-aloud and the assistant persona | Weights and training data must allow redistribution | Native emotion and intensity |
-| Windows OneCore voices (SAPI)            | Zero-download fallback                              | OS                                                  | Rate and pitch only          |
+| Engine                                   | Role                                                                                                                                                                                                                        | License                                             | Mood support                 |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ---------------------------- |
+| Wyoming server (`wyoming-piper`, remote) | **First engine shipped** (read-aloud MVP): Piper running on a machine you own, reached over the LAN or Tailscale (`VOICE_HOST`, `VOICE_TTS_PORT`, `VOICE_TTS_VOICE`). The same protocol serves Whisper for dictation later. | MIT (Piper; voices vary)                            | Prosody fallback             |
+| Kokoro-82M (ONNX)                        | Default voice, fast on CPU and any GPU                                                                                                                                                                                      | Apache-2.0                                          | Prosody fallback             |
+| Piper                                    | Low-end hardware, many languages                                                                                                                                                                                            | MIT (voices vary)                                   | Prosody fallback             |
+| **Expressive model** (fine-tuned, below) | Mood voice for read-aloud and the assistant persona                                                                                                                                                                         | Weights and training data must allow redistribution | Native emotion and intensity |
+| Windows OneCore voices (SAPI)            | Zero-download fallback                                                                                                                                                                                                      | OS                                                  | Rate and pitch only          |
 
 ### The fine-tuned expressive model (ML track)
 

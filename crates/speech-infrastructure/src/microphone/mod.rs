@@ -2,8 +2,9 @@ mod os;
 
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::thread::JoinHandle;
+use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use cpal::SampleFormat;
@@ -54,6 +55,54 @@ fn mean(frame: &[f32]) -> f32 {
 }
 
 type Shared = Arc<Mutex<Recording>>;
+
+type Ready = Sender<Result<Shared, CaptureError>>;
+
+const STOP_POLL: Duration = Duration::from_millis(250);
+
+/// Opens an input stream with `start` on a dedicated thread, which keeps the stream (not
+/// `Send` on every platform) alive until the capture is finished.
+fn open_with<S>(
+    start: impl FnOnce() -> Result<(S, Shared), CaptureError> + Send + 'static,
+) -> Result<Capture, CaptureError> {
+    let (ready, opened) = mpsc::channel();
+    let stop = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&stop);
+    let holder = thread::Builder::new()
+        .name("microphone-input".into())
+        .spawn(move || run_device(start, &flag, &ready))
+        .map_err(capture_error)?;
+    let recording = opened.recv().map_err(|_| {
+        CaptureError("the microphone thread stopped before opening the device".into())
+    })??;
+    Ok(Capture {
+        recording,
+        stop,
+        holder,
+    })
+}
+
+fn run_device<S>(
+    start: impl FnOnce() -> Result<(S, Shared), CaptureError>,
+    stop: &AtomicBool,
+    ready: &Ready,
+) {
+    match start() {
+        Ok((stream, recording)) => {
+            if ready.send(Ok(recording)).is_ok() {
+                hold_until_stopped(stream, stop);
+            }
+        }
+        Err(error) => drop(ready.send(Err(error))),
+    }
+}
+
+fn hold_until_stopped<S>(stream: S, stop: &AtomicBool) {
+    while !stop.load(Ordering::SeqCst) {
+        thread::park_timeout(STOP_POLL);
+    }
+    drop(stream);
+}
 
 /// An open input stream: the recording it fills, and the thread that holds it open until
 /// `stop` is set.
@@ -150,7 +199,6 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::AtomicUsize;
-    use std::thread;
 
     use super::*;
 
@@ -219,27 +267,67 @@ mod tests {
 
     static OPENED: AtomicUsize = AtomicUsize::new(0);
 
+    struct FakeStream {
+        sink: Shared,
+        dropped: Arc<AtomicBool>,
+    }
+
+    impl Drop for FakeStream {
+        fn drop(&mut self) {
+            lock(&self.sink).push(&[0.25, 0.25]);
+            self.dropped.store(true, Ordering::SeqCst);
+        }
+    }
+
     #[expect(
         clippy::unnecessary_wraps,
-        reason = "it stands in for a device opener, which can fail"
+        reason = "it stands in for opening a stream, which can fail"
     )]
-    fn fake_device() -> Result<Capture, CaptureError> {
-        OPENED.fetch_add(1, Ordering::SeqCst);
+    fn fake_stream(dropped: Arc<AtomicBool>) -> Result<(FakeStream, Shared), CaptureError> {
         let recording = Arc::new(Mutex::new(Recording::new(1_000, 2)));
         lock(&recording).push(&[0.5, 0.5]);
-        let stop = Arc::new(AtomicBool::new(false));
-        let (sink, flag) = (Arc::clone(&recording), Arc::clone(&stop));
-        let holder = thread::spawn(move || {
-            while !flag.load(Ordering::SeqCst) {
-                thread::park();
-            }
-            lock(&sink).push(&[0.25, 0.25]);
+        let stream = FakeStream {
+            sink: Arc::clone(&recording),
+            dropped,
+        };
+        Ok((stream, recording))
+    }
+
+    fn fake_device() -> Result<Capture, CaptureError> {
+        OPENED.fetch_add(1, Ordering::SeqCst);
+        open_with(|| fake_stream(Arc::default()))
+    }
+
+    #[test]
+    fn the_stream_stays_open_until_the_capture_is_finished() {
+        let dropped = Arc::new(AtomicBool::new(false));
+        let watched = Arc::clone(&dropped);
+        let capture = open_with(move || fake_stream(watched)).unwrap();
+        thread::sleep(Duration::from_millis(50));
+        assert!(!dropped.load(Ordering::SeqCst), "still recording");
+        assert_eq!(capture.finish().unwrap().samples(), [0.5, 0.25]);
+        assert!(dropped.load(Ordering::SeqCst), "closed when finished");
+    }
+
+    #[test]
+    fn a_device_that_fails_to_open_reports_why() {
+        let opened = open_with(|| -> Result<((), Shared), CaptureError> {
+            Err(CaptureError("no microphone is available".into()))
         });
-        Ok(Capture {
-            recording,
-            stop,
-            holder,
-        })
+        assert_eq!(
+            opened.unwrap_err(),
+            CaptureError("no microphone is available".into())
+        );
+    }
+
+    #[test]
+    fn a_device_thread_that_dies_while_opening_is_reported() {
+        let opened =
+            open_with(|| -> Result<((), Shared), CaptureError> { panic!("driver crashed") });
+        assert_eq!(
+            opened.unwrap_err(),
+            CaptureError("the microphone thread stopped before opening the device".into())
+        );
     }
 
     fn no_device() -> Result<Capture, CaptureError> {

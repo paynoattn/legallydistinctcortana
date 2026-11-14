@@ -1,5 +1,5 @@
 use std::process;
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -38,6 +38,16 @@ const HANDLE_FORMATS: [u32; 8] = [
     CF_DSPMETAFILEPICT,
     CF_DSPENHMETAFILE,
 ];
+
+static CLIPBOARD_TRANSACTION: Mutex<()> = Mutex::new(());
+
+/// Held for every save, change, and restore of the clipboard in this process, so a selection
+/// read and a text insertion never interleave and restore each other's temporary contents.
+pub(crate) fn clipboard_transaction() -> MutexGuard<'static, ()> {
+    CLIPBOARD_TRANSACTION
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+}
 
 /// How long to wait for the copy, and how often to check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -160,13 +170,12 @@ pub trait KeyboardAccess: Send + Sync {
 /// Reads the selection in any app: saves every clipboard format, puts a marker on the
 /// clipboard, asks the app to copy, waits until the clipboard changes, then puts every saved
 /// format back. If the clipboard cannot be saved exactly, it is left untouched and the read
-/// fails. One read runs at a time.
+/// fails. One clipboard transaction (read or insertion) runs at a time in the process.
 #[derive(Debug)]
 pub struct ClipboardSelectionReader<C, K> {
     clipboard: C,
     keyboard: K,
     timing: Timing,
-    transaction: Mutex<()>,
 }
 
 impl<C: ClipboardAccess, K: KeyboardAccess> ClipboardSelectionReader<C, K> {
@@ -183,7 +192,6 @@ impl<C: ClipboardAccess, K: KeyboardAccess> ClipboardSelectionReader<C, K> {
             clipboard,
             keyboard,
             timing,
-            transaction: Mutex::new(()),
         }
     }
 
@@ -212,10 +220,7 @@ impl<C: ClipboardAccess, K: KeyboardAccess> ClipboardSelectionReader<C, K> {
 
 impl<C: ClipboardAccess, K: KeyboardAccess> SelectionReader for ClipboardSelectionReader<C, K> {
     fn read_selection(&self) -> Result<String, SelectionError> {
-        let _one_at_a_time = self
-            .transaction
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
+        let _one_at_a_time = clipboard_transaction();
         let snapshot = self
             .clipboard
             .read_formats()
@@ -627,15 +632,21 @@ mod tests {
             refuse: &["set_text"],
             ..Board::default()
         });
-        let started = Instant::now();
-        let result = reader(&board, app(&board, Some("x"))).read_selection();
+        let reader = ClipboardSelectionReader::with_timing(
+            Arc::clone(&board),
+            CountingApp {
+                board: Arc::clone(&board),
+                copies: AtomicUsize::new(0),
+            },
+            Timing::DEFAULT,
+        );
         assert_eq!(
-            result,
+            reader.read_selection(),
             Err(SelectionError::Unavailable(
                 "clipboard locked by another app".into()
             ))
         );
-        assert!(started.elapsed() < Duration::from_millis(25));
+        assert_eq!(reader.keyboard.copies.load(Ordering::SeqCst), 0);
         assert_eq!(board.contents(), rich());
     }
 
@@ -691,10 +702,9 @@ mod tests {
     #[test]
     fn a_read_after_a_panicking_one_still_works() {
         let board = Board::holding(rich());
-        let shared = Arc::new(reader(&board, app(&board, Some("ok"))));
-        let poisoner = Arc::clone(&shared);
-        let died = thread::spawn(move || {
-            let _held = poisoner.transaction.lock().unwrap();
+        let shared = reader(&board, app(&board, Some("ok")));
+        let died = thread::spawn(|| {
+            let _held = clipboard_transaction();
             panic!("a reader died");
         })
         .join();

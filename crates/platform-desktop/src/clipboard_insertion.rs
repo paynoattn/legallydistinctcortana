@@ -1,9 +1,9 @@
-use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
 
 use platform_ports::{InsertError, TextInserter};
 
+use crate::clipboard_selection::clipboard_transaction;
 use crate::{ClipboardAccess, ClipboardSnapshot, KeyboardAccess};
 
 /// How long the focused app gets to read the clipboard after the paste, before it is put back.
@@ -12,13 +12,12 @@ pub const PASTE_SETTLE: Duration = Duration::from_millis(150);
 /// Types text into any app by pasting it: saves every clipboard format, puts the text on the
 /// clipboard, sends the paste shortcut, waits [`PASTE_SETTLE`], then puts every saved format
 /// back. If the clipboard cannot be saved exactly, nothing is pasted and it is left untouched.
-/// One insertion runs at a time.
+/// One clipboard transaction (read or insertion) runs at a time in the process.
 #[derive(Debug)]
 pub struct ClipboardTextInserter<C, K> {
     clipboard: C,
     keyboard: K,
     settle: Duration,
-    transaction: Mutex<()>,
 }
 
 impl<C: ClipboardAccess, K: KeyboardAccess> ClipboardTextInserter<C, K> {
@@ -35,7 +34,6 @@ impl<C: ClipboardAccess, K: KeyboardAccess> ClipboardTextInserter<C, K> {
             clipboard,
             keyboard,
             settle,
-            transaction: Mutex::new(()),
         }
     }
 
@@ -55,10 +53,7 @@ impl<C: ClipboardAccess, K: KeyboardAccess> ClipboardTextInserter<C, K> {
 
 impl<C: ClipboardAccess, K: KeyboardAccess> TextInserter for ClipboardTextInserter<C, K> {
     fn insert(&self, text: &str) -> Result<(), InsertError> {
-        let _one_at_a_time = self
-            .transaction
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
+        let _one_at_a_time = clipboard_transaction();
         let snapshot = self
             .clipboard
             .read_formats()
@@ -79,6 +74,7 @@ fn unpreservable(reason: &str) -> InsertError {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::Instant;
 
@@ -175,7 +171,9 @@ mod tests {
 
     impl KeyboardAccess for Shared {
         fn send_copy(&self) -> Result<(), String> {
-            Err("not used".into())
+            self.0.note("send_copy", "input blocked")?;
+            *self.0.clipboard.lock().unwrap() = vec![(TEXT, b"selected".to_vec())];
+            Ok(())
         }
 
         fn send_paste(&self) -> Result<(), String> {
@@ -193,6 +191,107 @@ mod tests {
     fn inserter(desk: &Arc<Desk>) -> ClipboardTextInserter<Shared, Shared> {
         let shared = Shared(Arc::clone(desk));
         ClipboardTextInserter::with_settle(shared.clone(), shared, Duration::ZERO)
+    }
+
+    struct FailFirstPaste {
+        shared: Shared,
+        first: AtomicBool,
+    }
+
+    impl FailFirstPaste {
+        fn new(desk: &Arc<Desk>) -> Self {
+            Self {
+                shared: Shared(Arc::clone(desk)),
+                first: AtomicBool::new(true),
+            }
+        }
+    }
+
+    impl KeyboardAccess for FailFirstPaste {
+        fn send_copy(&self) -> Result<(), String> {
+            self.shared.send_copy()
+        }
+
+        fn send_paste(&self) -> Result<(), String> {
+            if self.first.swap(false, Ordering::SeqCst) {
+                self.shared.0.note("send_paste", "input blocked")?;
+                return Err("input blocked".into());
+            }
+            self.shared.send_paste()
+        }
+    }
+
+    #[test]
+    fn a_selection_read_and_an_insertion_never_interleave() {
+        use platform_ports::SelectionReader;
+
+        use crate::{ClipboardSelectionReader, Timing};
+
+        let desk = Arc::new(Desk::holding(rich()));
+        let shared = Shared(Arc::clone(&desk));
+        let timing = Timing {
+            timeout: Duration::from_millis(500),
+            poll: Duration::from_millis(1),
+        };
+        let reader = ClipboardSelectionReader::with_timing(shared.clone(), shared.clone(), timing);
+        let inserter =
+            ClipboardTextInserter::with_settle(shared.clone(), shared, Duration::from_millis(30));
+        let start = std::sync::Barrier::new(2);
+        thread::scope(|scope| {
+            scope.spawn(|| {
+                start.wait();
+                assert_eq!(inserter.insert("typed"), Ok(()));
+            });
+            start.wait();
+            assert_eq!(reader.read_selection(), Ok("selected".into()));
+        });
+        let read = ["read_formats", "set_text", "send_copy", "write_formats"];
+        let insert = ["read_formats", "set_text", "send_paste", "write_formats"];
+        let log = desk.log();
+        let blocks: Vec<&[&str]> = log.chunks(4).collect();
+        assert!(
+            blocks == [&read[..], &insert[..]] || blocks == [&insert[..], &read[..]],
+            "{log:?}"
+        );
+        assert_eq!(desk.pasted(), ["typed"]);
+        assert_eq!(desk.clipboard(), rich());
+    }
+
+    #[test]
+    fn a_failed_restore_keeps_the_original_paste_error() {
+        let desk = Arc::new(Desk::failing("write_formats"));
+        let inserter = ClipboardTextInserter::with_settle(
+            Shared(Arc::clone(&desk)),
+            FailFirstPaste::new(&desk),
+            Duration::ZERO,
+        );
+        assert_eq!(
+            inserter.insert("hi"),
+            Err(InsertError("input blocked".into()))
+        );
+        assert_eq!(
+            desk.log(),
+            ["read_formats", "set_text", "send_paste", "write_formats"]
+        );
+        assert!(desk.pasted().is_empty(), "nothing was pasted");
+    }
+
+    #[test]
+    fn an_insertion_can_retry_after_a_failed_paste() {
+        let desk = Arc::new(Desk::holding(rich()));
+        let inserter = ClipboardTextInserter::with_settle(
+            Shared(Arc::clone(&desk)),
+            FailFirstPaste::new(&desk),
+            Duration::ZERO,
+        );
+        assert_eq!(
+            inserter.insert("first"),
+            Err(InsertError("input blocked".into()))
+        );
+        assert_eq!(desk.clipboard(), rich());
+        assert_eq!(inserter.insert("second"), Ok(()));
+        assert_eq!(desk.pasted(), ["second"]);
+        assert_eq!(desk.clipboard(), rich());
     }
 
     #[test]

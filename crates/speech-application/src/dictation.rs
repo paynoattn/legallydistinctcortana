@@ -211,6 +211,8 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Barrier, mpsc};
+    use std::thread;
 
     use super::*;
 
@@ -331,6 +333,144 @@ mod tests {
         assert_eq!(rig.service.press(), Ok(PressOutcome::Listening));
         let utterance = rig.service.release().unwrap();
         rig.service.finish(utterance)
+    }
+
+    fn concurrent<T: Send>(action: impl Fn() -> T + Sync) -> Vec<T> {
+        let start = Barrier::new(2);
+        thread::scope(|scope| {
+            let workers: Vec<_> = (0..2)
+                .map(|_| {
+                    scope.spawn(|| {
+                        start.wait();
+                        action()
+                    })
+                })
+                .collect();
+            workers
+                .into_iter()
+                .map(|worker| worker.join().unwrap())
+                .collect()
+        })
+    }
+
+    struct Paused<T> {
+        inner: T,
+        entered: mpsc::Sender<()>,
+        resume: Mutex<mpsc::Receiver<()>>,
+    }
+
+    struct Controller {
+        entered: mpsc::Receiver<()>,
+        resume: mpsc::Sender<()>,
+    }
+
+    impl<T> Paused<T> {
+        fn new(inner: T) -> (Self, Controller) {
+            let (entered, waiting) = mpsc::channel();
+            let (resume, resumed) = mpsc::channel();
+            (
+                Self {
+                    inner,
+                    entered,
+                    resume: Mutex::new(resumed),
+                },
+                Controller {
+                    entered: waiting,
+                    resume,
+                },
+            )
+        }
+
+        fn wait(&self) {
+            self.entered.send(()).unwrap();
+            self.resume
+                .lock()
+                .unwrap()
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap();
+        }
+    }
+
+    impl<T: SpeechToText> SpeechToText for Paused<T> {
+        fn transcribe(&self, speech: &AudioClip) -> Result<String, TranscriptionError> {
+            self.wait();
+            self.inner.transcribe(speech)
+        }
+    }
+
+    impl<T: TextInserter> TextInserter for Paused<T> {
+        fn insert(&self, text: &str) -> Result<(), InsertError> {
+            self.wait();
+            self.inner.insert(text)
+        }
+    }
+
+    impl Controller {
+        fn assert_busy_and_resume(&self, service: &DictationService, mic: &Mic) {
+            self.entered.recv_timeout(Duration::from_secs(5)).unwrap();
+            assert_eq!(service.press(), Ok(PressOutcome::Busy));
+            assert!(service.release().is_none());
+            assert!(!service.is_listening());
+            assert_eq!(mic.starts.load(Ordering::SeqCst), 1);
+            assert_eq!(mic.stops.load(Ordering::SeqCst), 1);
+            self.resume.send(()).unwrap();
+        }
+    }
+
+    #[test]
+    fn simultaneous_presses_open_the_microphone_only_once() {
+        let rig = saying("hi");
+        let outcomes = concurrent(|| rig.service.press().unwrap());
+        assert_eq!(
+            outcomes
+                .iter()
+                .filter(|outcome| **outcome == PressOutcome::Listening)
+                .count(),
+            1
+        );
+        assert!(outcomes.contains(&PressOutcome::AlreadyListening));
+        assert_eq!(rig.mic.starts.load(Ordering::SeqCst), 1);
+        drop(rig.service.release());
+    }
+
+    #[test]
+    fn simultaneous_releases_hand_out_only_one_utterance() {
+        let rig = saying("hi");
+        rig.service.press().unwrap();
+        let released = concurrent(|| rig.service.release());
+        assert_eq!(released.iter().filter(|item| item.is_some()).count(), 1);
+        assert_eq!(rig.mic.stops.load(Ordering::SeqCst), 1);
+        assert_eq!(rig.service.press(), Ok(PressOutcome::Busy));
+        drop(released);
+        assert_eq!(rig.service.press(), Ok(PressOutcome::Listening));
+        drop(rig.service.release());
+    }
+
+    #[test]
+    fn key_events_stay_busy_during_transcription_and_insertion() {
+        let mic = Arc::new(Mic::default());
+        let (whisper, transcribing) = Paused::new(Whisper::saying("hi"));
+        let (typist, inserting) = Paused::new(Typist::default());
+        let typist = Arc::new(typist);
+        let service = DictationService::new(
+            Arc::<Mic>::clone(&mic),
+            Arc::new(whisper),
+            Arc::<Paused<Typist>>::clone(&typist),
+        );
+        service.press().unwrap();
+        let utterance = service.release().unwrap();
+        thread::scope(|scope| {
+            let worker = scope.spawn(|| service.finish(utterance));
+            transcribing.assert_busy_and_resume(&service, &mic);
+            inserting.assert_busy_and_resume(&service, &mic);
+            assert_eq!(
+                worker.join().unwrap(),
+                Ok(DictationOutcome::Inserted { chars: 2 })
+            );
+        });
+        assert_eq!(typist.inner.typed(), ["hi "]);
+        assert_eq!(service.press(), Ok(PressOutcome::Listening));
+        drop(service.release());
     }
 
     #[test]

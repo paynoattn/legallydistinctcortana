@@ -221,6 +221,62 @@ mod tests {
     }
 
     #[test]
+    fn empty_audio_sends_start_and_stop_without_an_audio_chunk() {
+        let (result, sent) = transcribe(
+            None,
+            &clip(48_000, vec![]),
+            vec![reply("transcript", &json!({"text": ""}))],
+        );
+        assert_eq!(result, Ok(String::new()));
+        assert_eq!(kinds(&sent), ["transcribe", "audio-start", "audio-stop"]);
+        assert!(sent.iter().all(|event| event.payload.is_empty()));
+    }
+
+    #[test]
+    fn exact_chunk_boundaries_preserve_sample_order_without_an_empty_tail() {
+        let samples = [vec![0.25; 1_600], vec![-0.5; 1_600]].concat();
+        let (_, sent) = transcribe(
+            None,
+            &clip(16_000, samples),
+            vec![reply("transcript", &json!({"text": "hi"}))],
+        );
+        assert_eq!(
+            kinds(&sent),
+            [
+                "transcribe",
+                "audio-start",
+                "audio-chunk",
+                "audio-chunk",
+                "audio-stop"
+            ]
+        );
+        assert_eq!(sent[2].payload, [0x00, 0x20].repeat(1_600));
+        assert_eq!(sent[3].payload, [0x00, 0xC0].repeat(1_600));
+        let format = json!({"rate": 16000, "width": 2, "channels": 1});
+        assert_eq!(sent[2].data, *format.as_object().unwrap());
+        assert_eq!(sent[3].data, *format.as_object().unwrap());
+    }
+
+    #[test]
+    fn one_sample_past_a_chunk_boundary_is_kept_in_its_own_chunk() {
+        let mut samples = vec![0.0; 1_600];
+        samples.push(-1.0);
+        let sent = WyomingTranscriber::new(config(10_300, None)).requests(&clip(16_000, samples));
+        assert_eq!(
+            kinds(&sent),
+            [
+                "transcribe",
+                "audio-start",
+                "audio-chunk",
+                "audio-chunk",
+                "audio-stop"
+            ]
+        );
+        assert_eq!(sent[2].payload, vec![0; 3_200]);
+        assert_eq!(sent[3].payload, [0x00, 0x80]);
+    }
+
+    #[test]
     fn sends_the_language_and_the_audio_then_returns_the_transcript() {
         let (result, sent) = quarter_second();
         assert_eq!(result.unwrap(), "Hello, world.");

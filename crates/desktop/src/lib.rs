@@ -2,6 +2,7 @@
 //! feature crates' adapters into their use cases, and runs the event loop. Feature logic
 //! does not live here; it lives in the feature crates.
 
+mod dictation;
 mod read_aloud;
 
 /// Builds and runs the Tauri application until it exits.
@@ -20,7 +21,10 @@ pub fn run() -> Result<(), tauri::Error> {
             read_aloud::stop_reading,
             read_aloud::dismiss_read_aloud
         ])
-        .setup(read_aloud::setup)
+        .setup(|app| {
+            read_aloud::setup(app)?;
+            dictation::setup(app)
+        })
         .on_window_event(read_aloud::on_window_event)
         .run(tauri::generate_context!())
 }

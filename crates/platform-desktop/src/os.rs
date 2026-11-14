@@ -106,16 +106,22 @@ pub struct EnigoKeyboard;
 
 impl KeyboardAccess for EnigoKeyboard {
     fn send_copy(&self) -> Result<(), String> {
-        let mut enigo = Enigo::new(&Settings::default()).map_err(|error| error.to_string())?;
-        release_modifiers(&mut enigo).map_err(|error| error.to_string())?;
-        thread::sleep(MODIFIER_SETTLE);
-        enigo
-            .key(Key::Control, Direction::Press)
-            .map_err(|error| error.to_string())?;
-        let copied = enigo.key(Key::Unicode('c'), Direction::Click);
-        let released = enigo.key(Key::Control, Direction::Release);
-        copied.and(released).map_err(|error| error.to_string())
+        send_control_chord('c').map_err(|error| error.to_string())
     }
+
+    fn send_paste(&self) -> Result<(), String> {
+        send_control_chord('v').map_err(|error| error.to_string())
+    }
+}
+
+fn send_control_chord(letter: char) -> Result<(), Box<dyn std::error::Error>> {
+    let mut enigo = Enigo::new(&Settings::default())?;
+    release_modifiers(&mut enigo)?;
+    thread::sleep(MODIFIER_SETTLE);
+    enigo.key(Key::Control, Direction::Press)?;
+    let pressed = enigo.key(Key::Unicode(letter), Direction::Click);
+    let released = enigo.key(Key::Control, Direction::Release);
+    Ok(pressed.and(released)?)
 }
 
 fn release_modifiers(enigo: &mut Enigo) -> enigo::InputResult<()> {

@@ -1,4 +1,4 @@
-//! What the read-aloud use cases need from the outside world.
+//! What the read-aloud and dictation use cases need from the outside world.
 
 use speech_domain::{AudioClip, Voice, VoiceChoice};
 use thiserror::Error;
@@ -28,6 +28,57 @@ pub enum SynthesisError {
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[error("can't play audio: {0}")]
 pub struct PlaybackError(pub String);
+
+/// Why recorded speech could not be turned into text.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum TranscriptionError {
+    /// The speech recognition server could not be reached.
+    #[error("can't reach the speech recognition server at {address}: {reason}")]
+    Unreachable {
+        /// Host and port that were tried.
+        address: String,
+        /// What the network reported.
+        reason: String,
+    },
+    /// The speech recognition server answered with an error.
+    #[error("the speech recognition server reported an error: {0}")]
+    Server(String),
+    /// The speech recognition server's answer did not follow the protocol.
+    #[error("the speech recognition server sent something unexpected: {0}")]
+    Protocol(String),
+}
+
+/// Why the microphone could not record.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("can't record from the microphone: {0}")]
+pub struct CaptureError(pub String);
+
+/// Turns recorded speech into text.
+pub trait SpeechToText: Send + Sync {
+    /// What was said in `speech`, as plain text. Empty when nothing was recognized.
+    ///
+    /// # Errors
+    ///
+    /// Any [`TranscriptionError`].
+    fn transcribe(&self, speech: &AudioClip) -> Result<String, TranscriptionError>;
+}
+
+/// Records from the user's microphone between [`AudioInput::start`] and [`AudioInput::stop`].
+pub trait AudioInput: Send + Sync {
+    /// Opens the microphone and starts recording, dropping any recording still open.
+    ///
+    /// # Errors
+    ///
+    /// [`CaptureError`] if no input device can be opened.
+    fn start(&self) -> Result<(), CaptureError>;
+
+    /// Stops recording, closes the microphone, and returns what was recorded.
+    ///
+    /// # Errors
+    ///
+    /// [`CaptureError`] if nothing was being recorded or the recording is unusable.
+    fn stop(&self) -> Result<AudioClip, CaptureError>;
+}
 
 /// Turns text into speech.
 pub trait SpeechSynthesizer: Send + Sync {
@@ -136,6 +187,30 @@ mod tests {
         assert_eq!(
             PlaybackError("no device".into()).to_string(),
             "can't play audio: no device"
+        );
+        assert_eq!(
+            CaptureError("no microphone".into()).to_string(),
+            "can't record from the microphone: no microphone"
+        );
+    }
+
+    #[test]
+    fn transcription_errors_are_readable() {
+        let unreachable = TranscriptionError::Unreachable {
+            address: "voice-box:10300".into(),
+            reason: "connection refused".into(),
+        };
+        assert_eq!(
+            unreachable.to_string(),
+            "can't reach the speech recognition server at voice-box:10300: connection refused"
+        );
+        assert_eq!(
+            TranscriptionError::Server("no model".into()).to_string(),
+            "the speech recognition server reported an error: no model"
+        );
+        assert_eq!(
+            TranscriptionError::Protocol("bad header".into()).to_string(),
+            "the speech recognition server sent something unexpected: bad header"
         );
     }
 }

@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use thiserror::Error;
 
 use crate::dsp;
@@ -98,6 +100,15 @@ impl AudioClip {
         &self.samples
     }
 
+    /// How long the clip plays, rounded down to the millisecond.
+    #[must_use]
+    pub fn duration(&self) -> Duration {
+        let samples = u64::try_from(self.samples.len()).unwrap_or(u64::MAX);
+        Duration::from_millis(
+            samples.saturating_mul(MILLIS_PER_SECOND) / u64::from(self.sample_rate.max(1)),
+        )
+    }
+
     /// Consumes the clip, returning its samples.
     #[must_use]
     pub fn into_samples(self) -> Vec<f32> {
@@ -111,6 +122,24 @@ impl AudioClip {
         Self {
             sample_rate: sample_rate.max(1),
             samples: dsp::stretch(&self.samples, step),
+        }
+    }
+
+    /// Each sample averaged with the `window - 1` samples before it: a simple low-pass filter
+    /// for before downsampling, so sound above the new rate's range does not fold back as
+    /// noise. A window of 0 or 1 leaves the clip as it is.
+    #[must_use]
+    pub fn smoothed(&self, window: u16) -> Self {
+        let width = usize::from(window.max(1));
+        let samples = (0..self.samples.len())
+            .map(|end| {
+                let start = (end + 1).saturating_sub(width);
+                mean(self.samples.get(start..=end).unwrap_or_default())
+            })
+            .collect();
+        Self {
+            sample_rate: self.sample_rate,
+            samples,
         }
     }
 
@@ -151,6 +180,11 @@ impl AudioClip {
     }
 }
 
+fn mean(window: &[f32]) -> f32 {
+    let count = u16::try_from(window.len()).map_or(f32::from(u16::MAX), f32::from);
+    window.iter().sum::<f32>() / count.max(1.0)
+}
+
 fn mono_sample(frame: &[u8], channels: u16) -> f32 {
     let (samples, _) = frame.as_chunks::<BYTES_PER_SAMPLE>();
     let sum: f32 = samples
@@ -166,6 +200,47 @@ mod tests {
 
     fn clip(rate: u32, samples: &[f32]) -> AudioClip {
         AudioClip::from_samples(rate, samples.to_vec()).unwrap()
+    }
+
+    #[test]
+    fn duration_is_the_sample_count_over_the_rate_in_whole_milliseconds() {
+        assert_eq!(
+            clip(16_000, &[0.0; 4_000]).duration(),
+            Duration::from_millis(250)
+        );
+        assert_eq!(clip(1_000, &[0.0; 3]).duration(), Duration::from_millis(3));
+        assert_eq!(clip(3_000, &[0.0; 2]).duration(), Duration::ZERO);
+        assert_eq!(clip(3_000, &[0.0; 5]).duration(), Duration::from_millis(1));
+        assert_eq!(clip(48_000, &[]).duration(), Duration::ZERO);
+    }
+
+    #[test]
+    fn smoothing_averages_each_sample_with_the_ones_before_it() {
+        let smoothed = clip(48_000, &[0.3, 0.6, 0.9, 0.0, -0.9]).smoothed(3);
+        assert_eq!(smoothed.sample_rate(), 48_000);
+        let expected = [0.3, 0.45, 0.6, 0.5, 0.0];
+        assert_eq!(smoothed.samples().len(), expected.len());
+        for (got, want) in smoothed.samples().iter().zip(expected) {
+            assert!((got - want).abs() < 1e-6, "{got} != {want}");
+        }
+    }
+
+    #[test]
+    fn smoothing_over_one_sample_or_none_changes_nothing() {
+        let original = clip(16_000, &[0.5, -0.25, 1.0]);
+        assert_eq!(original.smoothed(1), original);
+        assert_eq!(original.smoothed(0), original);
+        assert_eq!(clip(16_000, &[]).smoothed(3).samples(), [0.0_f32; 0]);
+    }
+
+    #[test]
+    fn smoothing_a_tone_at_the_window_length_cancels_it() {
+        let tone = clip(48_000, &[1.0, -0.5, -0.5, 1.0, -0.5, -0.5]).smoothed(3);
+        assert!(
+            tone.samples()[2..].iter().all(|sample| sample.abs() < 1e-6),
+            "{:?}",
+            tone.samples()
+        );
     }
 
     #[test]

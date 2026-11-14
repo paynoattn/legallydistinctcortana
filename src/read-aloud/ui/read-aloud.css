@@ -104,6 +104,42 @@
   }
 }
 
+.read-aloud .voice-picker {
+  margin: 0.75rem 0 0;
+  padding: 0.5rem 0 0;
+  border: 0;
+  border-top: 1px solid var(--dusk-raised);
+  font-size: 0.8rem;
+  color: var(--mist);
+}
+
+.read-aloud .voice-picker legend {
+  padding: 0;
+  font-weight: 600;
+}
+
+.read-aloud .voice-picker label {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  align-items: center;
+  margin-top: 0.35rem;
+}
+
+.read-aloud select {
+  min-width: 0;
+  padding: 0.2rem 0.3rem;
+  font: inherit;
+  color: var(--paper);
+  border: 1px solid var(--mist);
+  border-radius: 6px;
+  background: var(--dusk-raised);
+}
+
+.read-aloud select:focus-visible {
+  outline: 2px solid var(--glow);
+  outline-offset: 1px;
+}
+
 body:has(.read-aloud) {
   margin: 0;
   background: #1f2347;

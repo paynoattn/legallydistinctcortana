@@ -8,9 +8,10 @@ use std::{env, thread};
 use kernel::{Mood, UnknownMood};
 use platform_desktop::{ArboardClipboard, ClipboardSelectionReader, EnigoKeyboard};
 use platform_ports::{Point, Rect, Size, popup_origin};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use speech_application::{
-    ReadAloudError, ReadAloudService, ReadOutcome, SelectionPreview, ShortcutOutcome,
+    ReadAloudError, ReadAloudService, ReadOutcome, SelectionPreview, ShortcutOutcome, Voice,
+    VoiceChoice,
 };
 use speech_infrastructure::{SpeakerOutput, WyomingConfig, WyomingSynthesizer};
 use tauri::{
@@ -52,6 +53,35 @@ enum StatusPayload {
     Finished,
     Stopped,
     Failed { message: String },
+}
+
+/// What the read-aloud window asks for when a mood is chosen.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ReadRequest {
+    mood: String,
+    voice: Option<String>,
+    speaker: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct VoicePayload {
+    name: String,
+    description: String,
+    languages: Vec<String>,
+    speakers: Vec<String>,
+}
+
+impl From<Voice> for VoicePayload {
+    fn from(voice: Voice) -> Self {
+        Self {
+            name: voice.name,
+            description: voice.description,
+            languages: voice.languages,
+            speakers: voice.speakers,
+        }
+    }
 }
 
 impl From<Result<SelectionPreview, ReadAloudError>> for SelectionPayload {
@@ -142,14 +172,16 @@ fn on_shortcut<R: Runtime>(app: &AppHandle<R>, service: &Arc<ReadAloudService>) 
 pub(crate) fn read_aloud(
     app: AppHandle,
     state: State<'_, ReadAloud>,
-    mood: String,
+    request: ReadRequest,
 ) -> Result<(), String> {
-    let mood: Mood = mood
+    let mood: Mood = request
+        .mood
         .parse()
         .map_err(|error: UnknownMood| error.to_string())?;
+    let voice = VoiceChoice::parse(request.voice.as_deref(), request.speaker.as_deref());
     let ticket = state
         .service
-        .begin(mood)
+        .begin(mood, voice)
         .map_err(|error| error.to_string())?;
     emit(
         &app,
@@ -180,6 +212,19 @@ fn remember<R: Runtime>(app: &AppHandle<R>, payload: SelectionPayload) {
         .last_selection
         .lock()
         .unwrap_or_else(PoisonError::into_inner) = Some(payload);
+}
+
+#[tauri::command(async)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands receive their arguments by value"
+)]
+pub(crate) fn list_voices(state: State<'_, ReadAloud>) -> Result<Vec<VoicePayload>, String> {
+    state
+        .service
+        .voices()
+        .map(|voices| voices.into_iter().map(VoicePayload::from).collect())
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

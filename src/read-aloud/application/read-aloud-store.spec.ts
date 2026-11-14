@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { MoodId } from '../domain/mood.ts';
 import { IDLE, type ReadingStatus, type Selection, WAITING } from '../domain/read-aloud-state.ts';
+import type { Voice, VoiceChoice } from '../domain/voice.ts';
 import type { ReadAloudGateway } from './ports.ts';
 import { ReadAloudStore } from './read-aloud-store.ts';
 
 class RecordingGateway implements ReadAloudGateway {
   readonly calls: string[] = [];
+  readonly voices: (VoiceChoice | null)[] = [];
   failWith: unknown = undefined;
   emitSelection: (selection: Selection) => void = () => undefined;
   emitStatus: (status: ReadingStatus) => void = () => undefined;
@@ -18,8 +20,13 @@ class RecordingGateway implements ReadAloudGateway {
     this.emitStatus = listener;
   }
 
-  read(mood: MoodId): Promise<void> {
+  listVoices(): Promise<readonly Voice[]> {
+    return Promise.resolve([]);
+  }
+
+  read(mood: MoodId, voice: VoiceChoice | null): Promise<void> {
     this.calls.push(`read ${mood}`);
+    this.voices.push(voice);
     return this.outcome();
   }
 
@@ -89,6 +96,22 @@ describe('ReadAloudStore', () => {
       round: 1,
     });
     expect(gateway.calls).toEqual(['read calm']);
+  });
+
+  it('reads in the default voice when no voice source is given', () => {
+    const { gateway, store } = start();
+    store.choose('calm');
+    expect(gateway.voices).toEqual([null]);
+  });
+
+  it('reads with the voice that is current when the mood is chosen', () => {
+    const gateway = new RecordingGateway();
+    let current: VoiceChoice | null = null;
+    const store = new ReadAloudStore(gateway, () => current);
+    store.choose('calm');
+    current = { name: 'en_US-libritts-high', speaker: 'p239' };
+    store.choose('urgent');
+    expect(gateway.voices).toEqual([null, { name: 'en_US-libritts-high', speaker: 'p239' }]);
   });
 
   it('forwards stop and dismiss without changing the snapshot', async () => {

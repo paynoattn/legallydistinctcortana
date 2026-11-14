@@ -41,10 +41,10 @@ The first working feature: select text in any app, press **Ctrl+Alt+R**, and pic
 docker run -p 10200:10200 rhasspy/wyoming-piper --voice en_US-amy-medium
 
 # on the Windows PC
-VOICE_HOST=my-mac make dev   # VOICE_TTS_PORT (default 10200), VOICE_TTS_VOICE, READ_ALOUD_SHORTCUT
+VOICE_HOST=my-mac make dev   # VOICE_TTS_PORT (default 10200), VOICE_TTS_VOICE (the server default voice), READ_ALOUD_SHORTCUT
 ```
 
-The moods are approximated with speed, loudness, and pauses until the expressive voice model lands. The manual test plan is in [`qa/procedures/read-aloud.md`](qa/procedures/read-aloud.md).
+The window also has a voice picker (language, voice, and speaker for multi-speaker voices), filled from the voices the server reports and remembered between readings. The moods are approximated with speed, loudness, and pauses until the expressive voice model lands. The manual test plan is in [`qa/procedures/read-aloud.md`](qa/procedures/read-aloud.md).
 
 Contributors and coding agents start with [`AGENTS.md`](AGENTS.md). Stories go through the `gauntlet` skill (specifier → coder → cleaner → hardener → qa), and the agent hooks stop an agent from finishing while `make check` is red.
 

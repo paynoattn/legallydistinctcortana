@@ -2,13 +2,17 @@ import { act, render, screen } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { ReadAloudStore } from '../application/read-aloud-store.ts';
-import type { ReadAloudGateway } from '../application/ports.ts';
+import type { ReadAloudGateway, VoicePreferences } from '../application/ports.ts';
+import { VoiceStore } from '../application/voice-store.ts';
 import { MOODS, type MoodId } from '../domain/mood.ts';
 import type { ReadingStatus, Selection } from '../domain/read-aloud-state.ts';
+import type { Voice, VoiceChoice } from '../domain/voice.ts';
+import { FAKE_VOICES } from '../infrastructure/fake-read-aloud-gateway.ts';
 import { ReadAloudPanel } from './read-aloud-panel.tsx';
 
 class ScriptedGateway implements ReadAloudGateway {
   readonly calls: string[] = [];
+  readonly voices: (VoiceChoice | null)[] = [];
   failWith: unknown = undefined;
   emitSelection: (selection: Selection) => void = () => undefined;
   emitStatus: (status: ReadingStatus) => void = () => undefined;
@@ -21,8 +25,13 @@ class ScriptedGateway implements ReadAloudGateway {
     this.emitStatus = listener;
   }
 
-  read(mood: MoodId): Promise<void> {
+  listVoices(): Promise<readonly Voice[]> {
+    return Promise.resolve(FAKE_VOICES);
+  }
+
+  read(mood: MoodId, voice: VoiceChoice | null): Promise<void> {
     this.calls.push(`read ${mood}`);
+    this.voices.push(voice);
     return this.outcome();
   }
 
@@ -47,9 +56,25 @@ class ScriptedGateway implements ReadAloudGateway {
   }
 }
 
+class NoPreferences implements VoicePreferences {
+  load(): VoiceChoice | null {
+    return null;
+  }
+
+  save(): void {
+    return undefined;
+  }
+}
+
 function startPanel(): { gateway: ScriptedGateway; user: ReturnType<typeof userEvent.setup> } {
   const gateway = new ScriptedGateway();
-  render(<ReadAloudPanel store={new ReadAloudStore(gateway)} />);
+  const voices = new VoiceStore({
+    catalog: gateway,
+    preferences: new NoPreferences(),
+    preferredLanguage: 'en-US',
+  });
+  voices.load();
+  render(<ReadAloudPanel store={new ReadAloudStore(gateway, voices.current)} voices={voices} />);
   return { gateway, user: userEvent.setup() };
 }
 
@@ -206,6 +231,30 @@ describe('ReadAloudPanel with a selection', () => {
       );
     },
   );
+
+  it('offers the voice picker below the moods once the voices are loaded', async () => {
+    startReady();
+    expect(await screen.findByRole('combobox', { name: /^Voice/ })).toBeTruthy();
+    const following = Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(screen.getByRole('menu').compareDocumentPosition(screen.getByRole('group'))).toBe(
+      following,
+    );
+  });
+
+  it('reads in the voice that was picked', async () => {
+    const { gateway, user } = startReady();
+    await user.selectOptions(await screen.findByRole('combobox', { name: /^Voice/ }), [
+      'en_US-libritts-high',
+    ]);
+    await user.click(screen.getByRole('menuitem', { name: /Calm/ }));
+    expect(gateway.voices).toEqual([{ name: 'en_US-libritts-high', speaker: 'p239' }]);
+  });
+
+  it('reads in the default voice when none was picked', async () => {
+    const { gateway, user } = startReady();
+    await user.keyboard('1');
+    expect(gateway.voices).toEqual([null]);
+  });
 
   it('stops reading with the Stop button', async () => {
     const { gateway, user } = startReady();

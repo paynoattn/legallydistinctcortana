@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use kernel::Mood;
 use platform_ports::{SelectionError, SelectionReader};
-use speech_domain::{AudioClip, Prosody, ReadingText, TextError};
+use speech_domain::{AudioClip, Prosody, ReadingText, TextError, Voice, VoiceChoice};
 use thiserror::Error;
 
 use crate::CancelFlag;
@@ -123,26 +123,45 @@ impl ReadAloudService {
         Ok(preview)
     }
 
-    /// Reads the captured text in `mood`, sentence by sentence, and returns when it has
-    /// finished playing or was stopped. Stops any reading already in progress first.
+    /// The voices the synthesizer offers.
+    ///
+    /// # Errors
+    ///
+    /// [`ReadAloudError::Synthesis`] when the voice server cannot be asked.
+    pub fn voices(&self) -> Result<Vec<Voice>, ReadAloudError> {
+        Ok(self.synthesizer.voices()?)
+    }
+
+    /// Reads the captured text in `mood` with `voice` (`None` is the synthesizer's default),
+    /// sentence by sentence, and returns when it has finished playing or was stopped. Stops
+    /// any reading already in progress first.
     ///
     /// # Errors
     ///
     /// [`ReadAloudError::NothingCaptured`], [`ReadAloudError::Synthesis`], or
     /// [`ReadAloudError::Playback`]. On error the speakers are silenced.
-    pub fn read_captured(&self, mood: Mood) -> Result<ReadOutcome, ReadAloudError> {
-        let ticket = self.begin(mood)?;
+    pub fn read_captured(
+        &self,
+        mood: Mood,
+        voice: Option<VoiceChoice>,
+    ) -> Result<ReadOutcome, ReadAloudError> {
+        let ticket = self.begin(mood, voice)?;
         self.finish(ticket).unwrap_or(Ok(ReadOutcome::Stopped))
     }
 
-    /// Starts reading the captured text in `mood`: stops any reading in progress and makes
+    /// Starts reading the captured text in `mood` with `voice` (`None` is the synthesizer's
+    /// default): stops any reading in progress and makes
     /// this one current, so a [`Self::stop`] from now on ends it. Play it with
     /// [`Self::finish`], typically on another thread.
     ///
     /// # Errors
     ///
     /// [`ReadAloudError::NothingCaptured`].
-    pub fn begin(&self, mood: Mood) -> Result<ReadingTicket, ReadAloudError> {
+    pub fn begin(
+        &self,
+        mood: Mood,
+        voice: Option<VoiceChoice>,
+    ) -> Result<ReadingTicket, ReadAloudError> {
         let text = lock(&self.captured)
             .clone()
             .ok_or(ReadAloudError::NothingCaptured)?;
@@ -152,6 +171,7 @@ impl ReadAloudService {
             reading: Reading {
                 text,
                 prosody: Prosody::for_mood(mood),
+                voice,
                 cancel: session.cancel,
             },
         })
@@ -219,7 +239,7 @@ impl ReadAloudService {
     fn speak(&self, reading: &Reading) -> Result<ReadOutcome, ReadAloudError> {
         let cancel = &reading.cancel;
         for sentence in reading.text.sentences() {
-            let Some(clip) = self.synthesize_unless_cancelled(&sentence, cancel)? else {
+            let Some(clip) = self.synthesize_unless_cancelled(&sentence, reading)? else {
                 return Ok(ReadOutcome::Stopped);
             };
             if !self.enqueue_unless_cancelled(reading.prosody.apply(&clip), cancel)? {
@@ -237,12 +257,19 @@ impl ReadAloudService {
     fn synthesize_unless_cancelled(
         &self,
         sentence: &str,
-        cancel: &CancelFlag,
+        reading: &Reading,
     ) -> Result<Option<AudioClip>, SynthesisError> {
-        if cancel.is_cancelled() {
+        if reading.cancel.is_cancelled() {
             return Ok(None);
         }
-        self.synthesizer.synthesize(sentence).map(Some)
+        reading
+            .voice
+            .as_ref()
+            .map_or_else(
+                || self.synthesizer.synthesize(sentence),
+                |voice| self.synthesizer.synthesize_in(sentence, voice),
+            )
+            .map(Some)
     }
 
     fn enqueue_unless_cancelled(
@@ -289,6 +316,7 @@ impl fmt::Debug for ReadingTicket {
 struct Reading {
     text: ReadingText,
     prosody: Prosody,
+    voice: Option<VoiceChoice>,
     cancel: CancelFlag,
 }
 
@@ -325,6 +353,9 @@ mod tests {
         spoken: Mutex<Vec<String>>,
         fail_on: Option<&'static str>,
         after_first: Mutex<Option<Hook>>,
+        chosen: Mutex<Vec<(String, VoiceChoice)>>,
+        offered: Vec<Voice>,
+        voices_fail: bool,
     }
 
     impl SpeechSynthesizer for FakeSynth {
@@ -338,6 +369,25 @@ mod tests {
                 return Err(SynthesisError::Server("voice missing".into()));
             }
             Ok(AudioClip::from_samples(1_000, vec![0.1; 100]).unwrap())
+        }
+
+        fn synthesize_in(
+            &self,
+            sentence: &str,
+            voice: &VoiceChoice,
+        ) -> Result<AudioClip, SynthesisError> {
+            lock(&self.chosen).push((sentence.to_owned(), voice.clone()));
+            Ok(AudioClip::from_samples(1_000, vec![0.1; 100]).unwrap())
+        }
+
+        fn voices(&self) -> Result<Vec<Voice>, SynthesisError> {
+            if self.voices_fail {
+                return Err(SynthesisError::Unreachable {
+                    address: "voice-box:10200".into(),
+                    reason: "connection refused".into(),
+                });
+            }
+            Ok(self.offered.clone())
         }
     }
 
@@ -460,7 +510,7 @@ mod tests {
     fn reading_before_any_capture_is_an_error() {
         let rig = rig(Ok("Hi."), FakeSynth::default(), FakeOutput::default());
         assert_eq!(
-            rig.service.read_captured(Mood::Neutral),
+            rig.service.read_captured(Mood::Neutral, None),
             Err(ReadAloudError::NothingCaptured)
         );
     }
@@ -469,7 +519,7 @@ mod tests {
     fn reads_every_sentence_in_order_with_the_mood_applied() {
         let rig = reading("One. Two.");
         assert_eq!(
-            rig.service.read_captured(Mood::Neutral),
+            rig.service.read_captured(Mood::Neutral, None),
             Ok(ReadOutcome::Finished)
         );
         assert_eq!(*lock(&rig.synth.spoken), ["One.", "Two."]);
@@ -481,8 +531,8 @@ mod tests {
     #[test]
     fn captured_text_can_be_read_again_in_another_mood() {
         let rig = reading("Hello.");
-        rig.service.read_captured(Mood::Neutral).unwrap();
-        rig.service.read_captured(Mood::Mad).unwrap();
+        rig.service.read_captured(Mood::Neutral, None).unwrap();
+        rig.service.read_captured(Mood::Mad, None).unwrap();
         assert_eq!(*lock(&rig.output.queued), [100 + 250, 80 + 80]);
     }
 
@@ -498,7 +548,7 @@ mod tests {
         );
         rig.service.capture_selection().unwrap();
         assert_eq!(
-            rig.service.read_captured(Mood::Neutral),
+            rig.service.read_captured(Mood::Neutral, None),
             Err(ReadAloudError::Synthesis(SynthesisError::Server(
                 "voice missing".into()
             )))
@@ -523,7 +573,7 @@ mod tests {
         );
         rig.service.capture_selection().unwrap();
         assert_eq!(
-            rig.service.read_captured(Mood::Neutral),
+            rig.service.read_captured(Mood::Neutral, None),
             Err(ReadAloudError::Playback(PlaybackError("no device".into())))
         );
     }
@@ -539,7 +589,7 @@ mod tests {
             service.stop();
         }));
         assert_eq!(
-            rig.service.read_captured(Mood::Neutral),
+            rig.service.read_captured(Mood::Neutral, None),
             Ok(ReadOutcome::Stopped)
         );
         assert_eq!(*lock(&was_reading), Some(true));
@@ -554,7 +604,7 @@ mod tests {
     #[test]
     fn starting_a_reading_silences_the_previous_one() {
         let rig = reading("One.");
-        rig.service.read_captured(Mood::Neutral).unwrap();
+        rig.service.read_captured(Mood::Neutral, None).unwrap();
         assert_eq!(rig.output.stops.load(Ordering::SeqCst), 1);
     }
 
@@ -570,7 +620,7 @@ mod tests {
         );
         assert_eq!(rig.output.stops.load(Ordering::SeqCst), 0);
         assert_eq!(
-            rig.service.read_captured(Mood::Neutral),
+            rig.service.read_captured(Mood::Neutral, None),
             Ok(ReadOutcome::Finished)
         );
     }
@@ -598,7 +648,7 @@ mod tests {
             *lock(&seen) = Some(service.toggle());
         }));
         assert_eq!(
-            rig.service.read_captured(Mood::Neutral),
+            rig.service.read_captured(Mood::Neutral, None),
             Ok(ReadOutcome::Stopped)
         );
         assert_eq!(*lock(&toggled), Some(ShortcutOutcome::Stopped));
@@ -632,6 +682,10 @@ mod tests {
             }
             Ok(AudioClip::from_samples(1_000, vec![0.1; 100]).unwrap())
         }
+
+        fn voices(&self) -> Result<Vec<Voice>, SynthesisError> {
+            Ok(Vec::new())
+        }
     }
 
     struct SucceedAfterHook {
@@ -645,6 +699,10 @@ mod tests {
                 hook();
             }
             Ok(AudioClip::from_samples(1_000, vec![0.1; 100]).unwrap())
+        }
+
+        fn voices(&self) -> Result<Vec<Voice>, SynthesisError> {
+            Ok(Vec::new())
         }
     }
 
@@ -682,7 +740,7 @@ mod tests {
         let service = service_with(Arc::new(synth), Arc::<FakeOutput>::clone(&output));
         *lock(&slot) = Some(Arc::clone(&service));
         assert_eq!(
-            service.read_captured(Mood::Neutral),
+            service.read_captured(Mood::Neutral, None),
             Ok(ReadOutcome::Stopped)
         );
         assert_eq!(
@@ -700,14 +758,14 @@ mod tests {
         let still_reading: Slot<bool> = Arc::default();
         let (outcome, seen) = (Arc::clone(&replacement), Arc::clone(&still_reading));
         let synth = FailFirst::new(hook_into(&slot, move |service| {
-            *lock(&outcome) = Some(service.read_captured(Mood::Neutral));
+            *lock(&outcome) = Some(service.read_captured(Mood::Neutral, None));
             *lock(&seen) = Some(service.is_reading());
         }));
         let output = Arc::new(FakeOutput::default());
         let service = service_with(Arc::new(synth), Arc::<FakeOutput>::clone(&output));
         *lock(&slot) = Some(Arc::clone(&service));
         assert_eq!(
-            service.read_captured(Mood::Neutral),
+            service.read_captured(Mood::Neutral, None),
             Ok(ReadOutcome::Stopped)
         );
         assert_eq!(*lock(&replacement), Some(Ok(ReadOutcome::Finished)));
@@ -730,7 +788,7 @@ mod tests {
         let output = Arc::new(FakeOutput::default());
         let service = service_with(Arc::new(synth), Arc::<FakeOutput>::clone(&output));
         assert_eq!(
-            service.read_captured(Mood::Neutral),
+            service.read_captured(Mood::Neutral, None),
             Err(ReadAloudError::Synthesis(SynthesisError::Server(
                 "voice missing".into()
             )))
@@ -749,7 +807,7 @@ mod tests {
         let service = service_with(Arc::new(synth), Arc::<FakeOutput>::clone(&output));
         *lock(&slot) = Some(Arc::clone(&service));
         assert_eq!(
-            service.read_captured(Mood::Neutral),
+            service.read_captured(Mood::Neutral, None),
             Ok(ReadOutcome::Stopped)
         );
         assert!(lock(&output.queued).is_empty());
@@ -761,14 +819,14 @@ mod tests {
         let slot: Slot<Arc<ReadAloudService>> = Arc::default();
         let synth = SucceedAfterHook {
             hook: Mutex::new(Some(hook_into(&slot, |service| {
-                service.read_captured(Mood::Neutral).unwrap();
+                service.read_captured(Mood::Neutral, None).unwrap();
             }))),
         };
         let output = Arc::new(FakeOutput::default());
         let service = service_with(Arc::new(synth), Arc::<FakeOutput>::clone(&output));
         *lock(&slot) = Some(Arc::clone(&service));
         assert_eq!(
-            service.read_captured(Mood::Neutral),
+            service.read_captured(Mood::Neutral, None),
             Ok(ReadOutcome::Stopped)
         );
         assert_eq!(
@@ -791,7 +849,7 @@ mod tests {
         let service = service_with(Arc::new(synth), Arc::new(FakeOutput::default()));
         *lock(&slot) = Some(Arc::clone(&service));
         assert!(!service.is_reading(), "idle before");
-        service.read_captured(Mood::Neutral).unwrap();
+        service.read_captured(Mood::Neutral, None).unwrap();
         assert_eq!(*lock(&during), Some(true));
         assert!(!service.is_reading(), "idle after");
     }
@@ -800,7 +858,7 @@ mod tests {
     fn beginning_without_captured_text_is_an_error() {
         let rig = rig(Ok("Hi."), FakeSynth::default(), FakeOutput::default());
         assert!(matches!(
-            rig.service.begin(Mood::Neutral),
+            rig.service.begin(Mood::Neutral, None),
             Err(ReadAloudError::NothingCaptured)
         ));
     }
@@ -809,7 +867,7 @@ mod tests {
     fn a_begun_reading_is_current_until_it_is_finished() {
         let rig = reading("One.");
         assert!(!rig.service.is_reading());
-        let ticket = rig.service.begin(Mood::Neutral).unwrap();
+        let ticket = rig.service.begin(Mood::Neutral, None).unwrap();
         assert!(rig.service.is_reading(), "current as soon as it begins");
         assert_eq!(rig.service.finish(ticket), Some(Ok(ReadOutcome::Finished)));
         assert!(!rig.service.is_reading());
@@ -818,7 +876,7 @@ mod tests {
     #[test]
     fn beginning_silences_the_speakers_but_speaks_nothing_until_finished() {
         let rig = reading("One.");
-        let ticket = rig.service.begin(Mood::Neutral).unwrap();
+        let ticket = rig.service.begin(Mood::Neutral, None).unwrap();
         assert_eq!(rig.output.stops.load(Ordering::SeqCst), 1);
         assert!(lock(&rig.synth.spoken).is_empty(), "nothing is spoken yet");
         rig.service.finish(ticket);
@@ -828,14 +886,14 @@ mod tests {
     #[test]
     fn dropping_a_ticket_unfinished_ends_the_reading() {
         let rig = reading("One.");
-        drop(rig.service.begin(Mood::Neutral).unwrap());
+        drop(rig.service.begin(Mood::Neutral, None).unwrap());
         assert!(!rig.service.is_reading());
     }
 
     #[test]
     fn a_stop_between_begin_and_finish_finishes_stopped_without_speaking() {
         let rig = reading("One. Two.");
-        let ticket = rig.service.begin(Mood::Neutral).unwrap();
+        let ticket = rig.service.begin(Mood::Neutral, None).unwrap();
         rig.service.stop();
         assert!(!rig.service.is_reading());
         assert_eq!(rig.service.finish(ticket), Some(Ok(ReadOutcome::Stopped)));
@@ -846,8 +904,8 @@ mod tests {
     #[test]
     fn a_replaced_ticket_finishes_as_none_without_speaking() {
         let rig = reading("One.");
-        let old = rig.service.begin(Mood::Neutral).unwrap();
-        let new = rig.service.begin(Mood::Neutral).unwrap();
+        let old = rig.service.begin(Mood::Neutral, None).unwrap();
+        let new = rig.service.begin(Mood::Neutral, None).unwrap();
         assert_eq!(rig.service.finish(old), None);
         assert!(lock(&rig.synth.spoken).is_empty());
         assert!(
@@ -869,8 +927,8 @@ mod tests {
             FakeOutput::default(),
         );
         rig.service.capture_selection().unwrap();
-        let old = rig.service.begin(Mood::Neutral).unwrap();
-        let _new = rig.service.begin(Mood::Neutral).unwrap();
+        let old = rig.service.begin(Mood::Neutral, None).unwrap();
+        let _new = rig.service.begin(Mood::Neutral, None).unwrap();
         let stops_before = rig.output.stops.load(Ordering::SeqCst);
         assert_eq!(rig.service.finish(old), None);
         assert_eq!(rig.output.stops.load(Ordering::SeqCst), stops_before);
@@ -887,7 +945,7 @@ mod tests {
             FakeOutput::default(),
         );
         rig.service.capture_selection().unwrap();
-        let ticket = rig.service.begin(Mood::Neutral).unwrap();
+        let ticket = rig.service.begin(Mood::Neutral, None).unwrap();
         assert_eq!(
             rig.service.finish(ticket),
             Some(Err(ReadAloudError::Synthesis(SynthesisError::Server(
@@ -900,7 +958,7 @@ mod tests {
     #[test]
     fn a_ticket_has_a_debug_form_that_hides_the_text() {
         let rig = reading("Secret.");
-        let ticket = rig.service.begin(Mood::Neutral).unwrap();
+        let ticket = rig.service.begin(Mood::Neutral, None).unwrap();
         assert_eq!(format!("{ticket:?}"), "ReadingTicket { .. }");
     }
 
@@ -943,7 +1001,7 @@ mod tests {
             Arc::<LockProbe>::clone(&probe),
         );
         *lock(&probe.service) = Some(Arc::clone(&service));
-        service.read_captured(Mood::Neutral).unwrap();
+        service.read_captured(Mood::Neutral, None).unwrap();
         service.stop();
         let failing = service_with(
             Arc::new(FakeSynth {
@@ -953,7 +1011,7 @@ mod tests {
             Arc::<LockProbe>::clone(&probe),
         );
         *lock(&probe.service) = Some(Arc::clone(&failing));
-        assert!(failing.read_captured(Mood::Neutral).is_err());
+        assert!(failing.read_captured(Mood::Neutral, None).is_err());
         let seen = lock(&probe.observations).clone();
         assert!(seen.iter().any(|(what, _)| *what == "enqueue"));
         assert!(
@@ -961,6 +1019,152 @@ mod tests {
             "every enqueue and stop happens under the lock: {seen:?}"
         );
         assert_eq!(seen.iter().filter(|(what, _)| *what == "stop").count(), 4);
+    }
+
+    fn choice(name: &str, speaker: Option<&str>) -> VoiceChoice {
+        VoiceChoice::parse(Some(name), speaker).unwrap()
+    }
+
+    #[test]
+    fn without_a_voice_the_default_synthesis_is_used() {
+        let rig = reading("One. Two.");
+        rig.service.read_captured(Mood::Neutral, None).unwrap();
+        assert_eq!(*lock(&rig.synth.spoken), ["One.", "Two."]);
+        assert!(lock(&rig.synth.chosen).is_empty(), "no voice was chosen");
+    }
+
+    #[test]
+    fn a_chosen_voice_is_used_for_every_sentence() {
+        let rig = reading("One. Two.");
+        rig.service
+            .read_captured(
+                Mood::Neutral,
+                Some(choice("en_US-libritts-high", Some("p239"))),
+            )
+            .unwrap();
+        assert_eq!(
+            *lock(&rig.synth.chosen),
+            [
+                (
+                    "One.".to_owned(),
+                    choice("en_US-libritts-high", Some("p239"))
+                ),
+                (
+                    "Two.".to_owned(),
+                    choice("en_US-libritts-high", Some("p239"))
+                ),
+            ]
+        );
+        assert!(
+            lock(&rig.synth.spoken).is_empty(),
+            "the default synthesis is not used"
+        );
+        assert_eq!(*lock(&rig.output.queued), [100 + 250, 100 + 250]);
+    }
+
+    #[test]
+    fn a_ticket_uses_the_voice_it_began_with() {
+        let rig = reading("One.");
+        let ticket = rig
+            .service
+            .begin(Mood::Neutral, Some(choice("amy", None)))
+            .unwrap();
+        assert_eq!(rig.service.finish(ticket), Some(Ok(ReadOutcome::Finished)));
+        assert_eq!(
+            *lock(&rig.synth.chosen),
+            [("One.".to_owned(), choice("amy", None))]
+        );
+        assert!(lock(&rig.synth.spoken).is_empty());
+    }
+
+    #[test]
+    fn each_reading_keeps_its_own_voice_when_a_newer_one_began_first() {
+        let rig = reading("One.");
+        let old = rig
+            .service
+            .begin(Mood::Neutral, Some(choice("amy", None)))
+            .unwrap();
+        let new = rig
+            .service
+            .begin(Mood::Neutral, Some(choice("thorsten", None)))
+            .unwrap();
+        assert_eq!(rig.service.finish(old), None);
+        assert!(
+            lock(&rig.synth.chosen).is_empty(),
+            "the replaced reading was cut short before synthesizing"
+        );
+        assert_eq!(rig.service.finish(new), Some(Ok(ReadOutcome::Finished)));
+        assert_eq!(
+            *lock(&rig.synth.chosen),
+            [("One.".to_owned(), choice("thorsten", None))]
+        );
+        assert!(lock(&rig.synth.spoken).is_empty());
+    }
+
+    #[test]
+    fn a_newer_reading_without_a_voice_does_not_inherit_the_older_ones() {
+        let rig = reading("One.");
+        let old = rig
+            .service
+            .begin(Mood::Neutral, Some(choice("amy", None)))
+            .unwrap();
+        let new = rig.service.begin(Mood::Neutral, None).unwrap();
+        assert_eq!(rig.service.finish(new), Some(Ok(ReadOutcome::Finished)));
+        assert_eq!(rig.service.finish(old), None);
+        assert_eq!(*lock(&rig.synth.spoken), ["One."]);
+        assert!(lock(&rig.synth.chosen).is_empty());
+    }
+
+    #[test]
+    fn a_reading_does_not_remember_the_voice_of_the_one_before() {
+        let rig = reading("One.");
+        rig.service
+            .read_captured(Mood::Neutral, Some(choice("amy", None)))
+            .unwrap();
+        rig.service.read_captured(Mood::Neutral, None).unwrap();
+        assert_eq!(
+            *lock(&rig.synth.chosen),
+            [("One.".to_owned(), choice("amy", None))]
+        );
+        assert_eq!(*lock(&rig.synth.spoken), ["One."]);
+    }
+
+    #[test]
+    fn the_voices_are_the_ones_the_synthesizer_offers() {
+        let offered = vec![Voice {
+            name: "en_US-amy-medium".into(),
+            description: "amy (medium)".into(),
+            languages: vec!["en_US".into()],
+            speakers: Vec::new(),
+        }];
+        let rig = rig(
+            Ok("One."),
+            FakeSynth {
+                offered: offered.clone(),
+                ..FakeSynth::default()
+            },
+            FakeOutput::default(),
+        );
+        assert_eq!(rig.service.voices(), Ok(offered));
+    }
+
+    #[test]
+    fn a_voice_server_failure_is_a_synthesis_error() {
+        let rig = rig(
+            Ok("One."),
+            FakeSynth {
+                voices_fail: true,
+                ..FakeSynth::default()
+            },
+            FakeOutput::default(),
+        );
+        assert_eq!(
+            rig.service.voices(),
+            Err(ReadAloudError::Synthesis(SynthesisError::Unreachable {
+                address: "voice-box:10200".into(),
+                reason: "connection refused".into(),
+            }))
+        );
     }
 
     #[test]

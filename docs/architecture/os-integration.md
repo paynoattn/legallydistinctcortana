@@ -37,9 +37,9 @@ Windows has no system-wide context menu for **selected text** in other apps; the
      3. Release the held modifiers and send Ctrl+C.
      4. Wait up to 600 ms for the clipboard to change.
      5. Put every saved format back, kept out of clipboard history. Captures run one at a time.
-   - A frameless, always-on-top window (`read-aloud`, created hidden at startup) then opens next to the cursor, flipped and clamped to the monitor's work area (`platform-ports::popup_origin`). It shows a preview and nine moods.
+   - A frameless, always-on-top window (`read-aloud`, created hidden at startup) then opens next to the cursor, flipped and clamped to the monitor's work area (`platform-ports::popup_origin`). It shows a preview, a voice picker, and nine moods.
    - Choose a mood with a click, the arrow keys and Enter, or 1–9. Esc or clicking elsewhere closes the window. Pressing the shortcut again while it is reading stops it.
-   - Speech goes through `speech-application::ReadAloudService` to the configured voice (today: a Wyoming Piper server, see [voice and speech](voice-and-speech.md)).
+   - Speech goes through `speech-application::ReadAloudService` with the voice picked in the window, or the server default (today: a Wyoming Piper server, which lists its voices through `describe`; see [voice and speech](voice-and-speech.md)).
    - Later: UI Automation reads the selection without touching the clipboard (#028), and a default-mood variant skips the window.
 3. **File Explorer**: right-click on `.txt`, `.md`, `.pdf`, `.docx`, `.html` → "Read aloud" / "Summarize". Implemented as a Windows 11 modern context-menu command (`IExplorerCommand` in a small COM DLL registered through a sparse MSIX package). Post-MVP ([#058](../issues/058-explorer-context-menu.md)).
 

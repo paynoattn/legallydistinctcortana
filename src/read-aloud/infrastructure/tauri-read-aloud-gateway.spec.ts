@@ -69,10 +69,37 @@ function start(): { tauri: FakeTauri; gateway: TauriReadAloudGateway } {
 const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('TauriReadAloudGateway commands', () => {
-  it('invokes read_aloud with the mood', async () => {
+  it('invokes read_aloud with the mood and nulls when no voice is chosen', async () => {
     const { tauri, gateway } = start();
-    await gateway.read('urgent');
-    expect(tauri.invocations).toEqual([{ command: 'read_aloud', args: { mood: 'urgent' } }]);
+    await gateway.read('urgent', null);
+    expect(tauri.invocations).toEqual([
+      {
+        command: 'read_aloud',
+        args: { request: { mood: 'urgent', voice: null, speaker: null } },
+      },
+    ]);
+  });
+
+  it('invokes read_aloud with the chosen voice and speaker', async () => {
+    const { tauri, gateway } = start();
+    await gateway.read('calm', { name: 'en_US-libritts-high', speaker: 'p239' });
+    expect(tauri.invocations).toEqual([
+      {
+        command: 'read_aloud',
+        args: { request: { mood: 'calm', voice: 'en_US-libritts-high', speaker: 'p239' } },
+      },
+    ]);
+  });
+
+  it('invokes read_aloud with a voice that has no speaker', async () => {
+    const { tauri, gateway } = start();
+    await gateway.read('calm', { name: 'en_US-amy-medium', speaker: null });
+    expect(tauri.invocations).toEqual([
+      {
+        command: 'read_aloud',
+        args: { request: { mood: 'calm', voice: 'en_US-amy-medium', speaker: null } },
+      },
+    ]);
   });
 
   it('invokes stop_reading and dismiss_read_aloud without arguments', async () => {
@@ -88,7 +115,7 @@ describe('TauriReadAloudGateway commands', () => {
   it('rejects read with the host error, even a plain string', async () => {
     const { tauri, gateway } = start();
     tauri.invokeFailure = 'no speaker';
-    await expect(gateway.read('calm')).rejects.toBe('no speaker');
+    await expect(gateway.read('calm', null)).rejects.toBe('no speaker');
   });
 
   it('rejects stop with the host error', async () => {

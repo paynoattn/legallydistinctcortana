@@ -8,7 +8,9 @@ mod audio;
 mod dsp;
 mod prosody;
 mod text;
+mod voice;
 
 pub use audio::{AudioClip, AudioError, MAX_SAMPLE_RATE};
 pub use prosody::Prosody;
 pub use text::{MAX_READING_CHARS, MAX_SENTENCE_CHARS, ReadingText, TextError};
+pub use voice::{Voice, VoiceChoice};

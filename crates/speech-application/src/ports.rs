@@ -78,6 +78,10 @@ pub trait AudioInput: Send + Sync {
     ///
     /// [`CaptureError`] if nothing was being recorded or the recording is unusable.
     fn stop(&self) -> Result<AudioClip, CaptureError>;
+
+    /// Root-mean-square of the most recent block of input, where full scale is 1. Zero
+    /// when not recording.
+    fn level(&self) -> f32;
 }
 
 /// Turns text into speech.

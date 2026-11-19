@@ -4,6 +4,7 @@
 //!   `rhasspy/wyoming-piper` container on another machine on your LAN or tailnet.
 //! - [`WyomingTranscriber`]: Whisper (or any Wyoming STT server) over TCP, for example the
 //!   `rhasspy/wyoming-whisper` container next to Piper.
+//! - [`check_servers`]: whether both servers accept connections, for the tray's status.
 //! - [`SpeakerOutput`]: the default output device through `cpal`.
 //! - [`MicrophoneInput`]: the default input device through `cpal`, open only while recording.
 //! - [`WyomingConfig`] and [`WyomingSttConfig`]: server addresses from the same environment
@@ -25,4 +26,6 @@ pub use config::{
 };
 pub use microphone::{MAX_RECORDING, MicrophoneInput};
 pub use speaker::SpeakerOutput;
-pub use wyoming::{WyomingSynthesizer, WyomingTranscriber};
+pub use wyoming::{
+    PROBE_TIMEOUT, WyomingSynthesizer, WyomingTranscriber, check_servers, server_answers,
+};

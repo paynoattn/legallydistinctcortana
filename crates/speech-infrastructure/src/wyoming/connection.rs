@@ -32,7 +32,7 @@ pub(crate) fn exchange(
     }))
 }
 
-fn connect(server: &Server<'_>) -> io::Result<TcpStream> {
+pub(crate) fn connect(server: &Server<'_>) -> io::Result<TcpStream> {
     let mut last = io::Error::new(io::ErrorKind::NotFound, "the host name has no addresses");
     for address in (server.host, server.port).to_socket_addrs()? {
         match TcpStream::connect_timeout(&address, server.connect_timeout) {

@@ -1,4 +1,12 @@
-import { z } from 'zod/mini';
+import {
+  anyOf,
+  arrayOf,
+  integerIn,
+  isString,
+  objectOf,
+  oneOf,
+  type Check,
+} from '../../shared/checks.ts';
 import type { ReadAloudGateway } from '../application/ports.ts';
 import { isMoodId, type MoodId } from '../domain/mood.ts';
 import type { ReadingStatus, Selection } from '../domain/read-aloud-state.ts';
@@ -16,30 +24,29 @@ export const CURRENT_SELECTION_COMMAND = 'current_selection';
 export const LIST_VOICES_COMMAND = 'list_voices';
 export const UNEXPECTED_MESSAGE = 'The app sent an update this window does not understand.';
 
-const moodSchema = z.custom<MoodId>(isMoodId);
+const isFailure = objectOf({ kind: oneOf('failed'), message: isString });
 
-const selectionSchema = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('ready'),
-    preview: z.string(),
-    charCount: z.int().check(z.nonnegative()),
+const isSelection: Check<Selection> = anyOf(
+  objectOf({
+    kind: oneOf('ready'),
+    preview: isString,
+    charCount: integerIn(0, Number.MAX_SAFE_INTEGER),
   }),
-  z.object({ kind: z.literal('failed'), message: z.string() }),
-]);
+  isFailure,
+);
 
-const statusSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('reading'), mood: moodSchema }),
-  z.object({ kind: z.literal('finished') }),
-  z.object({ kind: z.literal('stopped') }),
-  z.object({ kind: z.literal('failed'), message: z.string() }),
-]);
+const isStatus: Check<ReadingStatus> = anyOf(
+  objectOf({ kind: oneOf('reading'), mood: isMoodId }),
+  objectOf({ kind: oneOf('finished', 'stopped') }),
+  isFailure,
+);
 
-const voicesSchema = z.array(
-  z.object({
-    name: z.string(),
-    description: z.string(),
-    languages: z.array(z.string()),
-    speakers: z.array(z.string()),
+const isVoices = arrayOf(
+  objectOf({
+    name: isString,
+    description: isString,
+    languages: arrayOf(isString),
+    speakers: arrayOf(isString),
   }),
 );
 
@@ -67,15 +74,14 @@ export class TauriReadAloudGateway implements ReadAloudGateway {
 
   onSelection(listener: (selection: Selection) => void): void {
     let live = false;
-    this.#subscribe<Selection>(SELECTION_EVENT, selectionSchema, (selection) => {
+    this.#subscribe<Selection>(SELECTION_EVENT, isSelection, (selection) => {
       live = true;
       listener(selection);
     })
       .then(() => this.#invoke(CURRENT_SELECTION_COMMAND))
       .then((payload) => {
-        const parsed = selectionSchema.safeParse(payload);
-        if (parsed.success && !live) {
-          listener(parsed.data);
+        if (isSelection(payload) && !live) {
+          listener(payload);
         }
       })
       .catch((error: unknown) => {
@@ -84,7 +90,7 @@ export class TauriReadAloudGateway implements ReadAloudGateway {
   }
 
   onStatus(listener: (status: ReadingStatus) => void): void {
-    this.#subscribe<ReadingStatus>(STATUS_EVENT, statusSchema, listener).catch((error: unknown) => {
+    this.#subscribe<ReadingStatus>(STATUS_EVENT, isStatus, listener).catch((error: unknown) => {
       listener(failure(messageOf(error)));
     });
   }
@@ -96,11 +102,11 @@ export class TauriReadAloudGateway implements ReadAloudGateway {
   }
 
   async listVoices(): Promise<readonly Voice[]> {
-    const parsed = voicesSchema.safeParse(await this.#invoke(LIST_VOICES_COMMAND));
-    if (!parsed.success) {
+    const voices = await this.#invoke(LIST_VOICES_COMMAND);
+    if (!isVoices(voices)) {
       throw new Error(UNEXPECTED_MESSAGE);
     }
-    return parsed.data;
+    return voices;
   }
 
   async stop(): Promise<void> {
@@ -113,12 +119,11 @@ export class TauriReadAloudGateway implements ReadAloudGateway {
 
   #subscribe<T>(
     event: string,
-    schema: z.ZodMiniType<T>,
+    check: Check<T>,
     listener: (value: T | Failure) => void,
   ): Promise<unknown> {
     return this.#listen(event, ({ payload }) => {
-      const parsed = schema.safeParse(payload);
-      listener(parsed.success ? parsed.data : failure(UNEXPECTED_MESSAGE));
+      listener(check(payload) ? payload : failure(UNEXPECTED_MESSAGE));
     });
   }
 }

@@ -1,0 +1,22 @@
+# Tray icon and settings
+
+Preconditions: Windows 11. A Wyoming Whisper server (port 10300) and a Wyoming Piper server (port 10200) are reachable on a machine on your LAN or tailnet, called `<host>` below. The app runs with `make dev`, except steps 15 and 16, which need an installed build (`make build`, then run the installer): development builds never change the sign-in items. Run with `RUST_LOG=info` to see the log lines quoted below. The settings file is `%APPDATA%\<identifier>\settings.json`, with the identifier from `crates/desktop/tauri.conf.json`.
+
+1. Start the app. → Expect: the tray shows the app's icon. Hover it. → Expect: the tooltip names the app and says "Connected to `<host>`." within a few seconds (or "Checking `<host>`…" at first).
+2. Right-click the tray icon. → Expect: a menu with the same status line (greyed out), Settings, Pause shortcuts, and Quit.
+3. Left-click the tray icon. → Expect: the settings window opens and takes focus. Close it with the X. → Expect: it hides, and the app keeps running in the tray. Left-click the icon again. → Expect: it comes back.
+4. In the settings window, check every value against the environment the app started with: Dictate F9, Read selection aloud Ctrl+Alt+R, and the host, ports, and language from `VOICE_HOST`, `VOICE_STT_PORT`, `VOICE_TTS_PORT`, and `VOICE_STT_LANGUAGE` (or localhost, 10300, 10200, en). → Expect: they match, and the connection line says "Connected to `<host>`." next to a glowing yellow dot.
+5. Stop the Piper server and click "Test connection". → Expect: "Speech recognition on `<host>` answers, but the voice server doesn't." with an orange dot. The tray tooltip says the same within 30 seconds. Start Piper again and test. → Expect: connected again.
+6. Click "Change" next to Dictate and press Ctrl+Shift+D. → Expect: the row shows Ctrl + Shift + D, and while it was recording, F9 did nothing in other apps. Save. → Expect: "Saved". Hold Ctrl+Shift+D in Notepad and dictate. → Expect: it types, and F9 no longer starts a dictation.
+7. Click "Change" next to Dictate, then press Esc. → Expect: recording stops and the shortcut stays Ctrl+Shift+D. Click "Reset" next to Dictate and save. → Expect: F9 dictates again.
+8. Set Read selection aloud to F9 (the same as Dictate). → Expect: the window refuses it inline before saving ("Already used by Dictate.").
+9. With another app holding a global shortcut (for example, set a shortcut in a tool such as PowerToys to Ctrl+Alt+K), set Read selection aloud to Ctrl+Alt+K and save. → Expect: the field says "Ctrl+Alt+K is taken by another app.", nothing is saved, and Ctrl+Alt+R still reads aloud. The settings file is unchanged.
+10. Type 70000 as the speech recognition port. → Expect: an inline error, and the port is not saved. Type `my box` as the host and save. → Expect: an inline error from the app saying a host name can't contain spaces.
+11. Change the host to a machine that does not run the servers (for example `192.0.2.1`) and save. → Expect: within a few seconds the connection line and the tray say "Can't reach 192.0.2.1." with a red dot. Dictate. → Expect: the indicator says it can't reach speech recognition (see [overlay](overlay.md) step 9). Change the host back to `<host>` and save. → Expect: connected, and dictation and read-aloud work without restarting.
+12. Change a value without saving, then click "Revert". → Expect: the saved values come back.
+13. Right-click the tray icon and choose "Pause shortcuts". → Expect: the item is checked, and neither F9 nor Ctrl+Alt+R does anything. Choose it again. → Expect: both work again.
+14. Quit from the tray menu, then start the app again. → Expect: the settings you saved are still in effect. Open the settings file. → Expect: camelCase JSON with the saved values. Start the app a second time while it runs. → Expect: no second tray icon; the running app opens its settings window.
+15. With an installed build, turn on "Start at sign-in" and save. → Expect: Task Manager → Startup apps lists the app as enabled. Sign out and back in. → Expect: the tray icon appears with no window open.
+16. Turn "Start at sign-in" off and save. → Expect: the app is gone from Startup apps, and the next sign-in does not start it.
+
+Cleanup: delete the settings file to go back to the defaults, turn off "Start at sign-in" if you turned it on, remove any test shortcut from the other app, and start any server you stopped.

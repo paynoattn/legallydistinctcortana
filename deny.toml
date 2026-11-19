@@ -9,6 +9,10 @@ unmaintained = "all"
 yanked = "deny"
 ignore = [
   { id = "RUSTSEC-2024-0370", reason = "proc-macro-error via glib-macros 0.18 <- gtk 0.18, Linux-only, pulled by tauri/wry/muda. No fix until Tauri moves to gtk4; revisit on every Tauri minor bump (docs/architecture/adr/0003-supply-chain-exceptions.md)." },
+  { id = "RUSTSEC-2026-0370", reason = "zvariant folded into zbus upstream; Linux-only, via zbus <- tauri-plugin-single-instance (D-Bus). No release without it yet; revisit on every plugin bump (ADR 0003)." },
+  { id = "RUSTSEC-2026-0371", reason = "zbus_names folded into zbus upstream; Linux-only, via zbus <- tauri-plugin-single-instance (D-Bus). No release without it yet; revisit on every plugin bump (ADR 0003)." },
+  { id = "RUSTSEC-2026-0372", reason = "zvariant_derive folded into zbus upstream; Linux-only, via zbus <- tauri-plugin-single-instance (D-Bus). No release without it yet; revisit on every plugin bump (ADR 0003)." },
+  { id = "RUSTSEC-2026-0542", reason = "humantime, test-only via cucumber 0.23 (latest), never shipped. Revisit on every cucumber bump (ADR 0003)." },
 ]
 
 [licenses]
@@ -33,6 +37,8 @@ exceptions = [
   # Boost (permissive, no binary attribution), arboard's Windows clipboard backend.
   { crate = "clipboard-win", allow = ["BSL-1.0"] },
   { crate = "error-code", allow = ["BSL-1.0"] },
+  # ISC (MIT-equivalent), Linux tray backend: libappindicator-sys <- tray-icon <- tauri.
+  { crate = "libloading", allow = ["ISC"] },
 ]
 
 [licenses.private]

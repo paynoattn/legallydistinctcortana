@@ -1,78 +1,81 @@
-//! Wiring for push-to-talk dictation: hold the shortcut (F9 by default) to record, release
-//! it to type what was said into the focused app. The behavior lives in `speech-application`.
+//! Wiring for push-to-talk dictation: hold the shortcut to record, release it to type what
+//! was said into the focused app. Key events are handled in order on one worker thread, so
+//! opening the microphone never blocks the thread that draws the indicator. The behavior
+//! lives in `speech_application::PushToTalk`.
 
-use std::error::Error;
+use std::io;
 use std::sync::Arc;
-use std::{env, thread};
+use std::sync::mpsc::{self, Sender};
+use std::thread;
 
-use platform_desktop::{ArboardClipboard, ClipboardTextInserter, EnigoKeyboard};
-use speech_application::{DictationError, DictationOutcome, DictationService, PressOutcome};
-use speech_infrastructure::{MicrophoneInput, WyomingSttConfig, WyomingTranscriber};
-use tauri::App;
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+use speech_application::{
+    DictationError, DictationHost, DictationOutcome, DictationService, OverlayController,
+    PressOutcome, PushToTalk,
+};
+use tauri::{AppHandle, Manager, Runtime};
 
-const SHORTCUT_VARIABLE: &str = "DICTATE_SHORTCUT";
-const DEFAULT_SHORTCUT: &str = "F9";
+use crate::overlay;
+use crate::support::{self, log_failure};
+use crate::voice::Voice;
 
-pub(crate) fn setup(app: &mut App) -> Result<(), Box<dyn Error>> {
-    let config = WyomingSttConfig::from_lookup(|key| env::var(key).ok())?;
-    tracing::info!(server = %config.address(), "dictation uses this Wyoming speech recognition server");
-    let service = Arc::new(DictationService::new(
-        Arc::new(MicrophoneInput::default()),
-        Arc::new(WyomingTranscriber::new(config)),
-        Arc::new(ClipboardTextInserter::new(ArboardClipboard, EnigoKeyboard)),
-    ));
-    let shortcut: Shortcut = shortcut_setting().parse()?;
-    let registered = app
-        .global_shortcut()
-        .on_shortcut(shortcut, move |_, _, event| {
-            on_key(&service, event.state() == ShortcutState::Pressed);
-        });
-    log_registration(registered.map(|()| shortcut));
-    Ok(())
+pub(crate) struct DictationKeys {
+    talk: Arc<PushToTalk>,
+    keys: Sender<bool>,
 }
 
-fn log_registration(registered: Result<Shortcut, tauri_plugin_global_shortcut::Error>) {
-    match registered {
-        Ok(shortcut) => tracing::info!(%shortcut, "dictation shortcut registered; hold it to talk"),
-        Err(error) => {
-            tracing::warn!(%error, "dictation is off: its shortcut could not be registered");
+impl DictationKeys {
+    pub(crate) fn start<R: Runtime>(
+        app: &AppHandle<R>,
+        overlay: Arc<OverlayController>,
+    ) -> io::Result<Self> {
+        let host = Host { app: app.clone() };
+        let talk = Arc::new(PushToTalk::new(Arc::new(host), overlay));
+        let (keys, presses) = mpsc::channel();
+        let worker = Arc::clone(&talk);
+        thread::Builder::new()
+            .name("dictation-keys".into())
+            .spawn(move || {
+                for pressed in presses {
+                    worker.key(pressed);
+                }
+            })?;
+        Ok(Self { talk, keys })
+    }
+
+    pub(crate) fn key(&self, pressed: bool) {
+        self.talk.announce(pressed);
+        log_failure(self.keys.send(pressed), "pass on the dictation key");
+    }
+}
+
+struct Host<R: Runtime> {
+    app: AppHandle<R>,
+}
+
+impl<R: Runtime> DictationHost for Host<R> {
+    fn dictation(&self) -> Arc<DictationService> {
+        self.app.state::<Voice>().dictation()
+    }
+
+    fn follow_level(&self, level: Box<dyn Fn() -> Option<f32> + Send>) {
+        overlay::pump_levels(&self.app, level);
+    }
+
+    fn spawn(&self, task: Box<dyn FnOnce() + Send>) {
+        support::spawn("dictation-finish", task);
+    }
+
+    fn pressed(&self, result: &Result<PressOutcome, DictationError>) {
+        match result {
+            Ok(outcome) => tracing::info!(%outcome, "dictation key down"),
+            Err(error) => tracing::warn!(%error, "dictation could not start"),
         }
     }
-}
 
-fn shortcut_setting() -> String {
-    env::var(SHORTCUT_VARIABLE)
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| DEFAULT_SHORTCUT.to_owned())
-}
-
-fn on_key(service: &Arc<DictationService>, pressed: bool) {
-    if pressed {
-        log_press(service.press());
-    } else {
-        release(service);
-    }
-}
-
-fn log_press(result: Result<PressOutcome, DictationError>) {
-    match result {
-        Ok(outcome) => tracing::info!(%outcome, "dictation key down"),
-        Err(error) => tracing::warn!(%error, "dictation could not start"),
-    }
-}
-
-fn release(service: &Arc<DictationService>) {
-    if let Some(utterance) = service.release() {
-        let service = Arc::clone(service);
-        thread::spawn(move || log_outcome(service.finish(utterance)));
-    }
-}
-
-fn log_outcome(result: Result<DictationOutcome, DictationError>) {
-    match result {
-        Ok(outcome) => tracing::info!(%outcome, "dictation finished"),
-        Err(error) => tracing::warn!(%error, "dictation failed"),
+    fn finished(&self, result: &Result<DictationOutcome, DictationError>) {
+        match result {
+            Ok(outcome) => tracing::info!(%outcome, "dictation finished"),
+            Err(error) => tracing::warn!(%error, "dictation failed"),
+        }
     }
 }

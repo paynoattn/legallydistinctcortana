@@ -21,11 +21,16 @@ speech-application = { path = "crates/speech-application" }
 speech-infrastructure = { path = "crates/speech-infrastructure" }
 platform-ports = { path = "crates/platform-ports" }
 platform-desktop = { path = "crates/platform-desktop" }
+settings-domain = { path = "crates/settings-domain" }
+settings-application = { path = "crates/settings-application" }
+settings-infrastructure = { path = "crates/settings-infrastructure" }
 
 # Desktop shell (Tauri 2). See docs/architecture/overview.md for the target crate layout.
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-build = { version = "2", features = [] }
+tauri-plugin-autostart = "2"
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-single-instance = "2"
 
 # Read-aloud MVP: speaker output, clipboard, synthetic Ctrl+C (all safe, cross-platform APIs).
 arboard = { version = "3.7.0", default-features = false }

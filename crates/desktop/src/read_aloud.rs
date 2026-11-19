@@ -1,34 +1,32 @@
-//! Wiring for "read selected text aloud": the global shortcut, the context window next to
-//! the cursor, and the commands the window calls. The behavior lives in `speech-application`.
+//! Wiring for "read selected text aloud": what the shortcut does, the context window next to
+//! the cursor, and the commands the window calls. The behavior lives in `speech-application`;
+//! the service itself comes from [`Voice`], so it follows the voice server setting.
 
-use std::error::Error;
-use std::sync::{Arc, Mutex, PoisonError};
-use std::{env, thread};
+use std::sync::{Mutex, PoisonError};
+use std::thread;
 
 use kernel::{Mood, UnknownMood};
-use platform_desktop::{ArboardClipboard, ClipboardSelectionReader, EnigoKeyboard};
 use platform_ports::{Point, Rect, Size, popup_origin};
 use serde::{Deserialize, Serialize};
 use speech_application::{
-    ReadAloudError, ReadAloudService, ReadOutcome, SelectionPreview, ShortcutOutcome, Voice,
-    VoiceChoice,
+    OverlayEvent, ReadAloudError, ReadOutcome, Readings, SelectionPreview, ShortcutOutcome,
+    Voice as VoiceInfo, VoiceChoice,
 };
-use speech_infrastructure::{SpeakerOutput, WyomingConfig, WyomingSynthesizer};
 use tauri::{
     App, AppHandle, Emitter, Manager, PhysicalPosition, Runtime, State, WebviewWindow, Window,
     WindowEvent,
 };
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+
+use crate::overlay::Overlay;
+use crate::voice::Voice;
 
 const POPUP: &str = "read-aloud";
 const SELECTION_EVENT: &str = "read-aloud:selection";
 const STATUS_EVENT: &str = "read-aloud:status";
-const SHORTCUT_VARIABLE: &str = "READ_ALOUD_SHORTCUT";
-const DEFAULT_SHORTCUT: &str = "ctrl+alt+r";
 
 pub(crate) struct ReadAloud {
-    service: Arc<ReadAloudService>,
     last_selection: Mutex<Option<SelectionPayload>>,
+    readings: Readings,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -73,8 +71,8 @@ pub(crate) struct VoicePayload {
     speakers: Vec<String>,
 }
 
-impl From<Voice> for VoicePayload {
-    fn from(voice: Voice) -> Self {
+impl From<VoiceInfo> for VoicePayload {
+    fn from(voice: VoiceInfo) -> Self {
         Self {
             name: voice.name,
             description: voice.description,
@@ -118,43 +116,19 @@ impl From<Result<ReadOutcome, ReadAloudError>> for StatusPayload {
     }
 }
 
-pub(crate) fn setup(app: &mut App) -> Result<(), Box<dyn Error>> {
-    let config = WyomingConfig::from_lookup(|key| env::var(key).ok())?;
-    tracing::info!(server = %config.address(), "read aloud uses this Wyoming voice server");
-    let service = Arc::new(ReadAloudService::new(
-        Arc::new(ClipboardSelectionReader::new(
-            ArboardClipboard,
-            EnigoKeyboard,
-        )),
-        Arc::new(WyomingSynthesizer::new(config)),
-        Arc::new(SpeakerOutput::default()),
-    ));
+pub(crate) fn setup(app: &App) {
     app.manage(ReadAloud {
-        service: Arc::clone(&service),
         last_selection: Mutex::new(None),
+        readings: Readings::default(),
     });
-    let shortcut: Shortcut = shortcut_setting().parse()?;
-    tracing::info!(%shortcut, "read aloud shortcut registered");
-    app.global_shortcut()
-        .on_shortcut(shortcut, move |app, _, event| {
-            if event.state() == ShortcutState::Released {
-                on_shortcut(app, &service);
-            }
-        })?;
-    Ok(())
 }
 
-fn shortcut_setting() -> String {
-    env::var(SHORTCUT_VARIABLE)
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| DEFAULT_SHORTCUT.to_owned())
-}
-
-fn on_shortcut<R: Runtime>(app: &AppHandle<R>, service: &Arc<ReadAloudService>) {
+/// The read-aloud shortcut was released: capture the selection and show the window, or stop
+/// a reading in progress.
+pub(crate) fn on_shortcut<R: Runtime>(app: &AppHandle<R>) {
     let app = app.clone();
-    let service = Arc::clone(service);
     thread::spawn(move || {
+        let service = app.state::<Voice>().read_aloud();
         if let ShortcutOutcome::Captured(selection) = service.toggle() {
             let payload = SelectionPayload::from(selection);
             remember(&app, payload.clone());
@@ -171,39 +145,76 @@ fn on_shortcut<R: Runtime>(app: &AppHandle<R>, service: &Arc<ReadAloudService>) 
 )]
 pub(crate) fn read_aloud(
     app: AppHandle,
-    state: State<'_, ReadAloud>,
+    voice: State<'_, Voice>,
     request: ReadRequest,
 ) -> Result<(), String> {
     let mood: Mood = request
         .mood
         .parse()
         .map_err(|error: UnknownMood| error.to_string())?;
-    let voice = VoiceChoice::parse(request.voice.as_deref(), request.speaker.as_deref());
-    let ticket = state
-        .service
-        .begin(mood, voice)
+    let voice_choice = VoiceChoice::parse(request.voice.as_deref(), request.speaker.as_deref());
+    let service = voice.read_aloud();
+    let ticket = service
+        .begin(mood, voice_choice)
         .map_err(|error| error.to_string())?;
-    emit(
-        &app,
-        STATUS_EVENT,
-        StatusPayload::Reading { mood: mood.id() },
-    );
-    let service = Arc::clone(&state.service);
+    let reading = announce_reading(&app, mood);
     thread::spawn(move || {
         if let Some(result) = service.finish(ticket) {
-            report_outcome(&app, result);
+            report_if_latest(&app, reading, result);
         }
     });
     Ok(())
 }
 
-fn report_outcome<R: Runtime>(app: &AppHandle<R>, result: Result<ReadOutcome, ReadAloudError>) {
+fn announce_reading<R: Runtime>(app: &AppHandle<R>, mood: Mood) -> u64 {
+    app.state::<ReadAloud>().readings.begin(|| {
+        app.state::<Overlay>().handle(OverlayEvent::SpeakingStarted);
+        emit(
+            app,
+            STATUS_EVENT,
+            StatusPayload::Reading { mood: mood.id() },
+        );
+    })
+}
+
+fn report_if_latest<R: Runtime>(
+    app: &AppHandle<R>,
+    reading: u64,
+    result: Result<ReadOutcome, ReadAloudError>,
+) {
+    if publish_if_latest(app, reading, result) {
+        hide_popup(app);
+    }
+}
+
+/// Publishes how `reading` ended unless a newer one has started. True when it finished.
+fn publish_if_latest<R: Runtime>(
+    app: &AppHandle<R>,
+    reading: u64,
+    result: Result<ReadOutcome, ReadAloudError>,
+) -> bool {
+    app.state::<ReadAloud>()
+        .readings
+        .report_if_latest(reading, || publish_outcome(app, result))
+        .unwrap_or(false)
+}
+
+/// Reloads the read-aloud window so it lists the voices of the voice server now in use.
+pub(crate) fn refresh_voices<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(window) = app.get_webview_window(POPUP) {
+        log_failure(window.reload(), "refresh the voice list");
+    }
+}
+
+fn publish_outcome<R: Runtime>(
+    app: &AppHandle<R>,
+    result: Result<ReadOutcome, ReadAloudError>,
+) -> bool {
+    app.state::<Overlay>().handle(OverlayEvent::SpeakingEnded);
     let status = StatusPayload::from(result);
     let finished = matches!(status, StatusPayload::Finished);
     emit(app, STATUS_EVENT, status);
-    if finished {
-        hide_popup(app);
-    }
+    finished
 }
 
 fn remember<R: Runtime>(app: &AppHandle<R>, payload: SelectionPayload) {
@@ -219,9 +230,9 @@ fn remember<R: Runtime>(app: &AppHandle<R>, payload: SelectionPayload) {
     clippy::needless_pass_by_value,
     reason = "Tauri commands receive their arguments by value"
 )]
-pub(crate) fn list_voices(state: State<'_, ReadAloud>) -> Result<Vec<VoicePayload>, String> {
-    state
-        .service
+pub(crate) fn list_voices(voice: State<'_, Voice>) -> Result<Vec<VoicePayload>, String> {
+    voice
+        .read_aloud()
         .voices()
         .map(|voices| voices.into_iter().map(VoicePayload::from).collect())
         .map_err(|error| error.to_string())
@@ -245,8 +256,8 @@ pub(crate) fn current_selection(state: State<'_, ReadAloud>) -> Option<Selection
     clippy::needless_pass_by_value,
     reason = "Tauri commands receive their arguments by value"
 )]
-pub(crate) fn stop_reading(state: State<'_, ReadAloud>) {
-    state.service.stop();
+pub(crate) fn stop_reading(voice: State<'_, Voice>) {
+    voice.read_aloud().stop();
 }
 
 #[tauri::command]

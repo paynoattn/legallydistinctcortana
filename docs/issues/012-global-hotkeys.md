@@ -4,6 +4,16 @@
 | ------------ | ---- | ---------- | --------------------------------------- |
 | M1 Dictation | M    | #009, #092 | area/platform, area/voice, type/feature |
 
+## Status
+
+**Bindings UI implemented** on branch `feat/overlay-tray-settings` (2026-11-18), on `tauri-plugin-global-shortcut` (`RegisterHotKey`), not a low-level keyboard hook. It reports key down and key up, so hold-to-dictate works. It differs from the design below:
+
+- `settings_domain::Chord` parses and displays chords ("Ctrl+Alt+R", "F9"), refuses reserved Windows chords (Win+L, Ctrl+Alt+Delete, and others) and bare keys other than F-keys, Pause, Scroll Lock, Insert, and Print Screen. The two bindings may not be the same.
+- Bindings are `dictateShortcut` (default F9) and `readAloudShortcut` (default Ctrl+Alt+R). There is no assistant binding or toggle mode yet.
+- The settings window records the next chord (shortcuts are suspended while it records), shows conflicts inline, and resets to the default. A chord another app holds is refused with "… is taken by another app." and nothing is saved.
+- The tray's "Pause shortcuts" unregisters both until it is chosen again.
+- QA: [`qa/procedures/tray-and-settings.md`](../../qa/procedures/tray-and-settings.md).
+
 ## Story
 
 As a writer, I want to hold a key anywhere in Windows to dictate and release it to stop, and to choose my own keys, so that dictation works in every app without reaching for the mouse.

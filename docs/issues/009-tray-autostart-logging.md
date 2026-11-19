@@ -4,6 +4,18 @@
 | -------------- | ---- | ---------- | -------------------------------------------- |
 | M0 Foundations | S    | #004       | area/platform, area/foundation, type/feature |
 
+## Status
+
+**Tray, close to tray, single instance, and start at sign-in implemented** on branch `feat/overlay-tray-settings` (2026-11-18). It differs from the design below:
+
+- The tray menu is the voice server's status (greyed out), Settings, Pause shortcuts, and Quit. Left click opens Settings. The tooltip names the app and the status, checked every 30 seconds and whenever the voice server settings change (`speech_infrastructure::check_servers`).
+- Closing the main or settings window hides it. The main window starts hidden and is shown unless the app starts with `--background`.
+- A second launch opens the running app's settings window. Arguments are not forwarded yet.
+- Start at sign-in is the "Start at sign-in" setting (#010), with `--background` only; there is no Today mode yet. Debug builds never change the sign-in items. If Windows refuses the change, the save is refused on that field.
+- Open: `tauri-plugin-autostart` 2.7 (through `auto-launch` 0.6) writes the HKCU Run value as `<exe path> --background` without quoting the path. It still starts the app when the path has spaces, but Windows tries each shorter prefix first, so a file such as `…\Programs\My.exe` placed in the user's profile would run instead. Replace it with a Run-key adapter in `platform-desktop` that quotes the path.
+- Not done: the brand's 16 px tray icon (it uses the window icon), file logging with redaction and rotation, and the stall watchdog.
+- QA: [`qa/procedures/tray-and-settings.md`](../../qa/procedures/tray-and-settings.md).
+
 ## Story
 
 As a user, I want the assistant to live quietly in my tray, start when I sign in, and never run twice, so that reminders and hotkeys work all day without a window open.

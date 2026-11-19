@@ -1,0 +1,288 @@
+html:has(.settings),
+html:has(.settings) body {
+  margin: 0;
+  color-scheme: light;
+  background: #f3f3f3;
+}
+
+html:has(.settings) {
+  scroll-padding-bottom: 72px;
+}
+
+.settings {
+  --dusk: #1f2347;
+  --plum: #6e3a7d;
+  --glow: #ffb81c;
+  --wick: #d9820b;
+  --ember-ink: #b3261e;
+  --muted: #4a4e6e;
+  --line: #e3e4ef;
+  --control-line: #8a8da8;
+  --surface: #fff;
+  --ground: #f3f3f3;
+
+  box-sizing: border-box;
+  max-width: none;
+  min-height: 100vh;
+  margin: 0;
+  padding: 24px 28px 0;
+  color: var(--dusk);
+  background: var(--ground);
+  font:
+    14px/1.45 'Segoe UI Variable Text',
+    'Segoe UI',
+    system-ui,
+    sans-serif;
+}
+
+.settings h1 {
+  margin: 0 0 20px;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.settings .settings-form {
+  display: block;
+}
+
+.settings fieldset {
+  min-width: 0;
+  margin: 0 0 20px;
+  padding: 0;
+  border: 0;
+}
+
+.settings legend {
+  margin: 0 0 8px;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.settings .card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.settings .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  min-height: 36px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.settings .row:first-child {
+  border-top: 0;
+}
+
+.settings .row > label {
+  flex: 1 1 12rem;
+}
+
+.settings .shortcut-what {
+  display: grid;
+  flex: 1 1 9rem;
+  gap: 4px;
+  justify-items: start;
+}
+
+.settings input[type='text'] {
+  box-sizing: border-box;
+  width: 13rem;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-bottom-color: var(--control-line);
+  border-radius: 4px;
+  font: inherit;
+  color: var(--dusk);
+  background: var(--surface);
+}
+
+.settings input[aria-invalid='true'] {
+  border-color: var(--ember-ink);
+  box-shadow: inset 0 -1px 0 var(--ember-ink);
+}
+
+.settings input[role='switch'] {
+  position: relative;
+  width: 40px;
+  height: 20px;
+  margin: 0;
+  border: 1px solid var(--muted);
+  border-radius: 10px;
+  background: var(--surface);
+  cursor: pointer;
+  appearance: none;
+}
+
+.settings input[role='switch']::before {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--muted);
+  content: '';
+  transition: left 120ms ease-out;
+}
+
+.settings input[role='switch']:checked {
+  border-color: var(--plum);
+  background: var(--plum);
+}
+
+.settings input[role='switch']:checked::before {
+  left: 23px;
+  background: var(--surface);
+}
+
+.settings button {
+  min-height: 32px;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-bottom-color: var(--control-line);
+  border-radius: 4px;
+  font: inherit;
+  color: var(--dusk);
+  background: #fbfbfd;
+  cursor: pointer;
+}
+
+.settings button:hover:not(:disabled) {
+  background: #f0eff6;
+}
+
+.settings button:disabled {
+  color: #5e6078;
+  background: #f5f5f8;
+  cursor: default;
+}
+
+.settings button.primary {
+  border-color: var(--plum);
+  color: #fff;
+  background: var(--plum);
+}
+
+.settings button.primary:hover:not(:disabled) {
+  background: #5d2f6b;
+}
+
+.settings button.primary:disabled {
+  border-color: var(--line);
+  color: #5e6078;
+  background: #ebe9ef;
+}
+
+.settings button.change[data-recording='true'] {
+  border-color: var(--plum);
+  color: var(--plum);
+  font-weight: 600;
+}
+
+.settings :focus-visible {
+  outline: 2px solid var(--plum);
+  outline-offset: 2px;
+}
+
+.settings .chord {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+  font: inherit;
+  color: var(--muted);
+}
+
+.settings .chord kbd {
+  display: inline-block;
+  min-width: 1.2em;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-bottom: 2px solid var(--control-line);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--dusk);
+  text-align: center;
+  background: #fafafc;
+}
+
+.settings .field-error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--ember-ink);
+  font-weight: 600;
+}
+
+.settings .field-error:empty {
+  display: none;
+}
+
+.settings .connection-status {
+  flex: 1 1 14rem;
+  margin: 0;
+  color: var(--muted);
+}
+
+.settings .dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--control-line);
+}
+
+.settings [data-kind='connected'] .dot {
+  background: var(--glow);
+  box-shadow:
+    0 0 0 3px rgb(255 184 28 / 0.28),
+    0 0 8px rgb(255 184 28 / 0.9);
+}
+
+.settings [data-kind='partial'] .dot {
+  background: var(--wick);
+}
+
+.settings [data-kind='unreachable'] .dot,
+.settings [data-kind='failed'] .dot {
+  background: var(--ember-ink);
+}
+
+.settings .actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 0 16px;
+  background: var(--ground);
+}
+
+.settings .notice {
+  flex: 1;
+  margin: 0;
+}
+
+.settings .notice[data-kind='failed'] {
+  color: var(--ember-ink);
+  font-weight: 600;
+}
+
+.settings [role='alert'] {
+  color: var(--ember-ink);
+}
+
+@media (forced-colors: active) {
+  .settings input[role='switch']:checked {
+    background: Highlight;
+  }
+}

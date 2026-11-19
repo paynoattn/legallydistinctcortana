@@ -26,6 +26,10 @@ impl AudioInput for Microphone {
     fn stop(&self) -> Result<AudioClip, CaptureError> {
         Ok(AudioClip::from_samples(self.rate, vec![0.25; self.samples]).unwrap())
     }
+
+    fn level(&self) -> f32 {
+        0.25
+    }
 }
 
 #[derive(Default)]

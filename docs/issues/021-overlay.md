@@ -4,6 +4,18 @@
 | ------------ | ---- | ---------- | ------------------------------------ |
 | M1 Dictation | M    | #004, #011 | area/ui, area/platform, type/feature |
 
+## Status
+
+**MVP slice implemented** on branch `feat/overlay-tray-settings` (2026-11-18): holding F9 shows the lantern in the bottom-right corner of the cursor's monitor; it follows the voice level, thinks after release, shows a check, and fades. Reading aloud shows it speaking, and failures show a clickable one-line reason with a fix. It differs from the design below:
+
+- The reducer is `speech_domain::OverlayState` (`Hidden | Dictating(Armed | Listening | Thinking) | Inserted | Speaking | Error`), not a new `voice-domain`. `speech_application::OverlayController` applies events, shows each change, and ends the lingering states (the check after 700 ms, an error after 6 s) unless something newer happened. `speech_application::PushToTalk` drives it from the dictation key.
+- There is no `OverlayWindow` port or `platform-windows` adapter yet. The `overlay` window in `tauri.conf.json` is non-focusable (`focusable: false`, which sets `WS_EX_NOACTIVATE`), transparent, always on top, and outside the taskbar. `crates/desktop` places it with `platform_ports::corner_origin` (16 px inside the work area) when it is shown and makes it click-through except in the Error state, when the whole 160 by 160 px window takes clicks, not just the pill (WebView2 cannot pass clicks through its transparent pixels). It does not move when the monitor or DPI changes while it is visible.
+- The overlay is `index.html?view=overlay`, not its own Vite entry, so it has no 25 KB budget of its own until #004; `scripts/bundle-budget.ts` checks each window against the shared 80 KB budget. The UI uses the hand-written guards in `src/shared/checks.ts`, not zod.
+- The fixes are "Choose a mic" (opens `ms-settings:sound`) and "Open settings" (the settings window), carried out by the core through the `overlay_fix` command. Clicking the reason dismisses the error.
+- Reduce motion comes from the app setting or `prefers-reduced-motion`. "Show the listening indicator" turns it off.
+- Not done: optional sounds, the live region in the main window, hiding during full-screen apps, and letting clicks outside the error pill through (it needs the core to follow the cursor and switch click-through over the pill only).
+- QA: [`qa/procedures/overlay.md`](../../qa/procedures/overlay.md).
+
 ## Story
 
 As a dictating user, I want a small animated mark in the bottom-right corner that shows when the assistant is listening, thinking, done, speaking, or stuck, without ever stealing focus from the app I'm typing in, so that I always know what it is doing.

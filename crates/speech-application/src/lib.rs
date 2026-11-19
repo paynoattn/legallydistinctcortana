@@ -7,6 +7,7 @@ mod dictation;
 mod overlay;
 pub mod ports;
 mod push_to_talk;
+mod readings;
 mod service;
 
 pub use cancel::CancelFlag;
@@ -17,6 +18,7 @@ pub use overlay::{
     Delay, OverlayController, OverlaySurface, finish_event, overlay_error, press_event,
 };
 pub use push_to_talk::{DictationHost, PushToTalk};
+pub use readings::Readings;
 pub use service::{
     PREVIEW_CHARS, ReadAloudError, ReadAloudService, ReadOutcome, ReadingTicket, SelectionPreview,
     ShortcutOutcome,

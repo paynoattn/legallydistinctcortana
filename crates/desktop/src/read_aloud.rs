@@ -2,14 +2,14 @@
 //! the cursor, and the commands the window calls. The behavior lives in `speech-application`;
 //! the service itself comes from [`Voice`], so it follows the voice server setting.
 
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Mutex, PoisonError};
 use std::thread;
 
 use kernel::{Mood, UnknownMood};
 use platform_ports::{Point, Rect, Size, popup_origin};
 use serde::{Deserialize, Serialize};
 use speech_application::{
-    OverlayEvent, ReadAloudError, ReadOutcome, SelectionPreview, ShortcutOutcome,
+    OverlayEvent, ReadAloudError, ReadOutcome, Readings, SelectionPreview, ShortcutOutcome,
     Voice as VoiceInfo, VoiceChoice,
 };
 use tauri::{
@@ -26,18 +26,7 @@ const STATUS_EVENT: &str = "read-aloud:status";
 
 pub(crate) struct ReadAloud {
     last_selection: Mutex<Option<SelectionPayload>>,
-    latest_reading: Mutex<u64>,
-}
-
-impl ReadAloud {
-    /// The number of the latest reading. Readings are numbered, and announced or reported
-    /// while this is held, so a reading stopped by a voice server change cannot overwrite the
-    /// status of one started since.
-    fn latest_reading(&self) -> MutexGuard<'_, u64> {
-        self.latest_reading
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-    }
+    readings: Readings,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -130,7 +119,7 @@ impl From<Result<ReadOutcome, ReadAloudError>> for StatusPayload {
 pub(crate) fn setup(app: &App) {
     app.manage(ReadAloud {
         last_selection: Mutex::new(None),
-        latest_reading: Mutex::new(0),
+        readings: Readings::default(),
     });
 }
 
@@ -178,16 +167,14 @@ pub(crate) fn read_aloud(
 }
 
 fn announce_reading<R: Runtime>(app: &AppHandle<R>, mood: Mood) -> u64 {
-    let state = app.state::<ReadAloud>();
-    let mut latest = state.latest_reading();
-    *latest = latest.wrapping_add(1);
-    app.state::<Overlay>().handle(OverlayEvent::SpeakingStarted);
-    emit(
-        app,
-        STATUS_EVENT,
-        StatusPayload::Reading { mood: mood.id() },
-    );
-    *latest
+    app.state::<ReadAloud>().readings.begin(|| {
+        app.state::<Overlay>().handle(OverlayEvent::SpeakingStarted);
+        emit(
+            app,
+            STATUS_EVENT,
+            StatusPayload::Reading { mood: mood.id() },
+        );
+    })
 }
 
 fn report_if_latest<R: Runtime>(
@@ -206,9 +193,10 @@ fn publish_if_latest<R: Runtime>(
     reading: u64,
     result: Result<ReadOutcome, ReadAloudError>,
 ) -> bool {
-    let state = app.state::<ReadAloud>();
-    let latest = state.latest_reading();
-    *latest == reading && publish_outcome(app, result)
+    app.state::<ReadAloud>()
+        .readings
+        .report_if_latest(reading, || publish_outcome(app, result))
+        .unwrap_or(false)
 }
 
 /// Reloads the read-aloud window so it lists the voices of the voice server now in use.

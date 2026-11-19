@@ -1,33 +1,14 @@
-import { z } from 'zod/mini';
+import { isString, nullable, objectOf, parseJson } from '../../shared/checks.ts';
 import type { VoicePreferences } from '../application/ports.ts';
 import type { VoiceChoice } from '../domain/voice.ts';
 
 export const VOICE_KEY = 'read-aloud.voice.v1';
 
-function parseJson(raw: string): unknown {
-  try {
-    const value: unknown = JSON.parse(raw);
-    return value;
-  } catch {
-    return undefined;
-  }
+function isName(value: unknown): value is string {
+  return isString(value) && value.length > 0;
 }
 
-const storedChoice = z.catch(
-  z.nullable(
-    z.pipe(
-      z.pipe(
-        z.string(),
-        z.transform((raw) => parseJson(raw)),
-      ),
-      z.object({
-        name: z.string().check(z.minLength(1)),
-        speaker: z.nullable(z.string()),
-      }),
-    ),
-  ),
-  null,
-);
+const isStoredChoice = objectOf({ name: isName, speaker: nullable(isString) });
 
 export class LocalStorageVoicePreferences implements VoicePreferences {
   readonly #storage: Storage;
@@ -37,7 +18,8 @@ export class LocalStorageVoicePreferences implements VoicePreferences {
   }
 
   load(): VoiceChoice | null {
-    return storedChoice.parse(this.#storage.getItem(VOICE_KEY));
+    const stored = parseJson(this.#storage.getItem(VOICE_KEY));
+    return isStoredChoice(stored) ? stored : null;
   }
 
   save(choice: VoiceChoice | null): void {

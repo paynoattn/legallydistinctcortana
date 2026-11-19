@@ -49,6 +49,32 @@ pub fn popup_origin(cursor: Point, popup: Size, area: Rect) -> Point {
     }
 }
 
+/// Top-left position for a window of `window` size in the bottom-right corner of `area`,
+/// `margin` pixels in from its right and bottom edges.
+///
+/// A window wider or taller than the area keeps its top-left corner inside the area.
+#[must_use]
+pub fn corner_origin(window: Size, area: Rect, margin: u32) -> Point {
+    Point {
+        x: far_edge(
+            window.width,
+            Span::new(area.origin.x, area.size.width),
+            margin,
+        ),
+        y: far_edge(
+            window.height,
+            Span::new(area.origin.y, area.size.height),
+            margin,
+        ),
+    }
+}
+
+fn far_edge(length: u32, span: Span, margin: u32) -> i32 {
+    let Span { start, end } = span;
+    let preferred = end - i64::from(margin) - i64::from(length);
+    i32::try_from(preferred.max(start)).unwrap_or(i32::MAX)
+}
+
 #[derive(Clone, Copy)]
 struct Span {
     start: i64,
@@ -140,6 +166,43 @@ mod tests {
             popup_origin(Point { x: -1100, y: 200 }, POPUP, narrow),
             Point { x: -1280, y: 0 }
         );
+    }
+
+    #[test]
+    fn the_corner_window_sits_inside_the_margin_of_the_bottom_right() {
+        let window = Size {
+            width: 160,
+            height: 160,
+        };
+        assert_eq!(corner_origin(window, AREA, 16), Point { x: 1744, y: 864 });
+    }
+
+    #[test]
+    fn the_corner_follows_a_monitor_left_of_the_primary_and_a_top_taskbar() {
+        let left = Rect {
+            origin: Point { x: -2560, y: 48 },
+            size: Size {
+                width: 2560,
+                height: 1392,
+            },
+        };
+        let window = Size {
+            width: 320,
+            height: 320,
+        };
+        assert_eq!(corner_origin(window, left, 32), Point { x: -352, y: 1088 });
+    }
+
+    #[test]
+    fn a_corner_window_larger_than_the_area_keeps_its_top_left_inside() {
+        let tiny = Rect {
+            origin: Point { x: 10, y: 20 },
+            size: Size {
+                width: 100,
+                height: 100,
+            },
+        };
+        assert_eq!(corner_origin(POPUP, tiny, 16), Point { x: 10, y: 20 });
     }
 
     #[test]

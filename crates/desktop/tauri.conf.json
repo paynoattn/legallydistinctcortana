@@ -14,8 +14,36 @@
       {
         "label": "main",
         "title": "Assistant",
+        "visible": false,
         "width": 1100,
         "height": 720
+      },
+      {
+        "label": "settings",
+        "title": "Settings",
+        "url": "index.html?view=settings",
+        "create": false,
+        "visible": false,
+        "width": 560,
+        "height": 720,
+        "minWidth": 440,
+        "minHeight": 480
+      },
+      {
+        "label": "overlay",
+        "title": "Indicator",
+        "url": "index.html?view=overlay",
+        "visible": false,
+        "focus": false,
+        "focusable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "shadow": false,
+        "width": 160,
+        "height": 160
       },
       {
         "label": "read-aloud",

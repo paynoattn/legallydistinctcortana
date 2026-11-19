@@ -3,14 +3,23 @@
 //! - [`ReadingText`]: validated text to read aloud, split into sentences for streaming.
 //! - [`AudioClip`]: mono samples at a sample rate, with resampling, speed, gain, and silence.
 //! - [`Prosody`]: how a [`kernel::Mood`] is approximated by speed, loudness, and pauses.
+//! - [`OverlayState`]: what the corner indicator shows, and how events move it.
+//! - [`ConnectionStatus`]: whether the voice servers answer, in one sentence.
 
 mod audio;
+mod connection;
 mod dsp;
+mod overlay;
 mod prosody;
 mod text;
 mod voice;
 
 pub use audio::{AudioClip, AudioError, MAX_SAMPLE_RATE};
+pub use connection::{ConnectionKind, ConnectionStatus};
+pub use overlay::{
+    ERROR_LINGER, Fix, INSERTED_LINGER, LOUD_DB, OverlayError, OverlayEvent, OverlayState,
+    QUIET_DB, Stage, level_from_rms,
+};
 pub use prosody::Prosody;
 pub use text::{MAX_READING_CHARS, MAX_SENTENCE_CHARS, ReadingText, TextError};
 pub use voice::{Voice, VoiceChoice};

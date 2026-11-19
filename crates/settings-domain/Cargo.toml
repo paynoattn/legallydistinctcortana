@@ -1,0 +1,14 @@
+[package]
+name = "settings-domain"
+description = "Settings value types: the settings, keyboard chords, and their validation. Pure: no I/O."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[lints]
+workspace = true

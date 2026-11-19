@@ -1,32 +1,11 @@
-import { z } from 'zod/mini';
+import { arrayOf, isBoolean, objectOf, parseJson } from '../../shared/checks.ts';
 import type { TaskRepository } from '../application/ports.ts';
-import { isTaskId, type Task, type TaskId } from '../domain/task.ts';
-import { isTaskTitle, type TaskTitle } from '../domain/task-title.ts';
+import { isTaskId, type Task } from '../domain/task.ts';
+import { isTaskTitle } from '../domain/task-title.ts';
 
 export const STORAGE_KEY = 'tasks.v1';
 
-function parseJson(raw: string): unknown {
-  try {
-    const value: unknown = JSON.parse(raw);
-    return value;
-  } catch {
-    return undefined;
-  }
-}
-
-const storedTasks = z.catch(
-  z.pipe(
-    z.pipe(z.string(), z.transform(parseJson)),
-    z.array(
-      z.object({
-        id: z.custom<TaskId>(isTaskId),
-        title: z.custom<TaskTitle>(isTaskTitle),
-        done: z.boolean(),
-      }),
-    ),
-  ),
-  [],
-);
+const isStoredTasks = arrayOf(objectOf({ id: isTaskId, title: isTaskTitle, done: isBoolean }));
 
 export class LocalStorageTaskRepository implements TaskRepository {
   readonly #storage: Storage;
@@ -36,7 +15,8 @@ export class LocalStorageTaskRepository implements TaskRepository {
   }
 
   load(): readonly Task[] {
-    return storedTasks.parse(this.#storage.getItem(STORAGE_KEY));
+    const stored = parseJson(this.#storage.getItem(STORAGE_KEY));
+    return isStoredTasks(stored) ? stored : [];
   }
 
   save(tasks: readonly Task[]): void {

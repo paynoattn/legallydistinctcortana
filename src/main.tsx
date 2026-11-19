@@ -2,17 +2,6 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { StrictMode, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { ReadAloudGateway } from './read-aloud/application/ports.ts';
-import { ReadAloudStore } from './read-aloud/application/read-aloud-store.ts';
-import { VoiceStore } from './read-aloud/application/voice-store.ts';
-import { FakeReadAloudGateway } from './read-aloud/infrastructure/fake-read-aloud-gateway.ts';
-import { LocalStorageVoicePreferences } from './read-aloud/infrastructure/local-storage-voice-preferences.ts';
-import { TauriReadAloudGateway } from './read-aloud/infrastructure/tauri-read-aloud-gateway.ts';
-import { ReadAloudPanel } from './read-aloud/ui/read-aloud-panel.tsx';
-import { TaskStore } from './tasks/application/task-store.ts';
-import { CryptoIdGenerator } from './tasks/infrastructure/crypto-id-generator.ts';
-import { LocalStorageTaskRepository } from './tasks/infrastructure/local-storage-task-repository.ts';
-import { TaskApp } from './tasks/ui/task-app.tsx';
 import './styles.css';
 
 const container = document.getElementById('root');
@@ -24,28 +13,80 @@ const params = new URLSearchParams(window.location.search);
 
 const inBrowserDev = import.meta.env.DEV && !isTauri();
 
-function readAloudGateway(): ReadAloudGateway {
-  return inBrowserDev
-    ? new FakeReadAloudGateway(params.get('selection'))
-    : new TauriReadAloudGateway(invoke, listen);
+async function overlayView(): Promise<ReactElement> {
+  const [store, motion, gateway, fake, ui] = await Promise.all([
+    import('./overlay/application/overlay-store.ts'),
+    import('./overlay/infrastructure/media-query-motion.ts'),
+    import('./overlay/infrastructure/tauri-overlay-gateway.ts'),
+    import('./overlay/infrastructure/window-event-ipc.ts'),
+    import('./overlay/ui/overlay-view.tsx'),
+  ]);
+  const ipc = inBrowserDev ? new fake.WindowEventIpc(window) : { invoke, listen };
+  const overlay = new store.OverlayStore(
+    new gateway.TauriOverlayGateway(ipc.invoke, ipc.listen),
+    new motion.MediaQueryMotion(window.matchMedia(motion.REDUCED_MOTION_QUERY)),
+  );
+  return <ui.OverlayView store={overlay} />;
 }
 
-function app(): ReactElement {
-  if (params.get('view') === 'read-aloud') {
-    const gateway = readAloudGateway();
-    const voices = new VoiceStore({
-      catalog: gateway,
-      preferences: new LocalStorageVoicePreferences(window.localStorage),
-      preferredLanguage: navigator.language,
-    });
-    voices.load();
-    return <ReadAloudPanel store={new ReadAloudStore(gateway, voices.current)} voices={voices} />;
-  }
-  const store = new TaskStore({
-    repository: new LocalStorageTaskRepository(window.localStorage),
-    ids: new CryptoIdGenerator(),
+async function settingsView(): Promise<ReactElement> {
+  const [store, gateway, fake, ui] = await Promise.all([
+    import('./settings/application/settings-store.ts'),
+    import('./settings/infrastructure/tauri-settings-gateway.ts'),
+    import('./settings/infrastructure/fake-settings-gateway.ts'),
+    import('./settings/ui/settings-window.tsx'),
+  ]);
+  const settings = new store.SettingsStore(
+    inBrowserDev
+      ? new fake.FakeSettingsGateway()
+      : new gateway.TauriSettingsGateway(invoke, listen),
+  );
+  settings.load();
+  return <ui.SettingsWindow store={settings} />;
+}
+
+async function readAloudView(): Promise<ReactElement> {
+  const [readAloud, voice, fake, preferences, gateway, ui] = await Promise.all([
+    import('./read-aloud/application/read-aloud-store.ts'),
+    import('./read-aloud/application/voice-store.ts'),
+    import('./read-aloud/infrastructure/fake-read-aloud-gateway.ts'),
+    import('./read-aloud/infrastructure/local-storage-voice-preferences.ts'),
+    import('./read-aloud/infrastructure/tauri-read-aloud-gateway.ts'),
+    import('./read-aloud/ui/read-aloud-panel.tsx'),
+  ]);
+  const readAloudGateway = inBrowserDev
+    ? new fake.FakeReadAloudGateway(params.get('selection'))
+    : new gateway.TauriReadAloudGateway(invoke, listen);
+  const voices = new voice.VoiceStore({
+    catalog: readAloudGateway,
+    preferences: new preferences.LocalStorageVoicePreferences(window.localStorage),
+    preferredLanguage: navigator.language,
   });
-  return <TaskApp store={store} />;
+  voices.load();
+  const store = new readAloud.ReadAloudStore(readAloudGateway, voices.current);
+  return <ui.ReadAloudPanel store={store} voices={voices} />;
 }
 
-createRoot(container).render(<StrictMode>{app()}</StrictMode>);
+async function tasksView(): Promise<ReactElement> {
+  const [store, ids, repository, ui] = await Promise.all([
+    import('./tasks/application/task-store.ts'),
+    import('./tasks/infrastructure/crypto-id-generator.ts'),
+    import('./tasks/infrastructure/local-storage-task-repository.ts'),
+    import('./tasks/ui/task-app.tsx'),
+  ]);
+  const tasks = new store.TaskStore({
+    repository: new repository.LocalStorageTaskRepository(window.localStorage),
+    ids: new ids.CryptoIdGenerator(),
+  });
+  return <ui.TaskApp store={tasks} />;
+}
+
+const VIEWS: Readonly<Partial<Record<string, () => Promise<ReactElement>>>> = {
+  overlay: overlayView,
+  settings: settingsView,
+  'read-aloud': readAloudView,
+};
+
+const view = VIEWS[params.get('view') ?? ''] ?? tasksView;
+
+createRoot(container).render(<StrictMode>{await view()}</StrictMode>);

@@ -4,6 +4,16 @@
 | -------------- | ---- | ---------- | -------------------------------------- |
 | M0 Foundations | S    | #006, #008 | area/foundation, area/ui, type/feature |
 
+## Status
+
+**MVP slice implemented** on branch `feat/overlay-tray-settings` (2026-11-18): a settings window for the shortcuts, the voice server, the indicator, and start at sign-in, applied without a restart. It differs from the design below:
+
+- `settings-domain` holds one typed `Settings` value with its validation (`Settings::with`, `Field`, `FieldError`), not a registry of definitions. There are no shared settings or scopes yet; everything is device-local.
+- `settings-application::SettingsService` opens, puts in effect, and saves the settings through the `SettingsStore` and `SettingsEffects` ports. A save validates, applies what changed, then stores; if a shortcut can't be registered or the file can't be written, everything is put back.
+- `settings-infrastructure::JsonFileStore` keeps them in `settings.json` in the app's config directory, not the encrypted store (#006). Environment variables (`VOICE_HOST`, `DICTATE_SHORTCUT`, and so on) give the defaults.
+- The window is `index.html?view=settings`. Its commands (`settings_get`, `settings_default`, `settings_save`, `shortcuts_suspend`, `shortcuts_resume`) refuse any other window by label; they are not typed through #008 yet.
+- QA: [`qa/procedures/tray-and-settings.md`](../../qa/procedures/tray-and-settings.md).
+
 ## Story
 
 As a user with several PCs, I want preferences like quiet hours to follow me while hotkeys and microphones stay per machine, so that each PC behaves the way its hardware needs.

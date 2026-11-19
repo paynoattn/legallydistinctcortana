@@ -77,6 +77,19 @@ export class TasksWorld extends World {
     await waitForApp(this.#page, this.errors, 'Read aloud');
   }
 
+  async openView(view: string, ready: (page: Page) => Promise<void>): Promise<void> {
+    const context = await startedBrowser().newContext();
+    this.#page = await context.newPage();
+    recordBrowserErrors(this.#page, this.errors);
+    await this.#page.goto(`${baseUrl}?${new URLSearchParams({ view }).toString()}`);
+    try {
+      await ready(this.#page);
+    } catch (error) {
+      const reasons = this.errors.length > 0 ? this.errors.join('\n') : String(error);
+      throw new Error(`the ${view} view did not render:\n${reasons}`, { cause: error });
+    }
+  }
+
   async reload(): Promise<void> {
     await this.page().reload();
     await waitForApp(this.page(), this.errors);
@@ -125,9 +138,12 @@ AfterAll(async function () {
   await server?.close();
 });
 
-Before({ tags: 'not @read-aloud' }, async function (this: TasksWorld) {
-  await this.open();
-});
+Before(
+  { tags: 'not @read-aloud and not @overlay and not @settings' },
+  async function (this: TasksWorld) {
+    await this.open();
+  },
+);
 
 After(async function (this: TasksWorld) {
   await this.close();

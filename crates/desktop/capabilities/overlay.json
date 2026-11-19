@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overlay",
+  "description": "The corner indicator only listens for events. Its two commands (overlay_fix, overlay_dismiss) are app commands, which Tauri does not gate by capability, so each checks that it was called from this window.",
+  "windows": ["overlay"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}

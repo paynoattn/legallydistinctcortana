@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use platform_ports::{InsertError, TextInserter};
-use speech_domain::AudioClip;
+use speech_domain::{AudioClip, level_from_rms};
 use thiserror::Error;
 
 use crate::ports::{AudioInput, CaptureError, SpeechToText, TranscriptionError};
@@ -155,10 +155,34 @@ impl DictationService {
     ///
     /// Any [`DictationError`]. Either way the service is idle again afterwards.
     pub fn finish(&self, utterance: Utterance) -> Result<DictationOutcome, DictationError> {
+        self.finish_then(utterance, |_| ())
+    }
+
+    /// [`DictationService::finish`], then `report` the result while the service still counts
+    /// as finishing, so no new press starts recording until the report is done.
+    ///
+    /// # Errors
+    ///
+    /// Any [`DictationError`]. Either way the service is idle again afterwards.
+    pub fn finish_then(
+        &self,
+        utterance: Utterance,
+        report: impl FnOnce(&Result<DictationOutcome, DictationError>),
+    ) -> Result<DictationOutcome, DictationError> {
         let Utterance {
             recorded,
-            finishing: _finishing,
+            finishing,
         } = utterance;
+        let result = self.type_out(recorded);
+        report(&result);
+        drop(finishing);
+        result
+    }
+
+    fn type_out(
+        &self,
+        recorded: Result<AudioClip, CaptureError>,
+    ) -> Result<DictationOutcome, DictationError> {
         let speech = recorded?;
         if speech.duration() < MIN_SPEECH {
             return Ok(DictationOutcome::TooShort);
@@ -174,10 +198,27 @@ impl DictationService {
         })
     }
 
+    /// How lit the indicator should be, from 0 to 1, for what the microphone hears now.
+    /// Zero when not recording.
+    #[must_use]
+    pub fn input_level(&self) -> f32 {
+        if self.is_listening() {
+            level_from_rms(self.input.level())
+        } else {
+            0.0
+        }
+    }
+
     /// Whether the microphone is recording.
     #[must_use]
     pub fn is_listening(&self) -> bool {
         *lock(&self.phase) == Phase::Listening
+    }
+
+    /// Whether a recording has stopped and is still being transcribed or typed.
+    #[must_use]
+    pub fn is_finishing(&self) -> bool {
+        *lock(&self.phase) == Phase::Finishing
     }
 }
 
@@ -224,6 +265,7 @@ mod tests {
         stops: AtomicUsize,
         refuse_start: bool,
         recorded: Option<Result<AudioClip, CaptureError>>,
+        rms: f32,
     }
 
     impl AudioInput for Mic {
@@ -238,6 +280,10 @@ mod tests {
         fn stop(&self) -> Result<AudioClip, CaptureError> {
             self.stops.fetch_add(1, Ordering::SeqCst);
             self.recorded.clone().unwrap_or_else(|| Ok(speech(1_000)))
+        }
+
+        fn level(&self) -> f32 {
+            self.rms
         }
     }
 
@@ -418,6 +464,23 @@ mod tests {
     }
 
     #[test]
+    fn the_input_level_follows_the_microphone_only_while_listening() {
+        let mic = Mic {
+            rms: 0.031_623,
+            ..Mic::default()
+        };
+        let rig = rig(mic, Whisper::saying("hi"), Typist::default());
+        assert!(rig.service.input_level().abs() < f32::EPSILON, "idle");
+        rig.service.press().unwrap();
+        assert!(
+            (rig.service.input_level() - 0.5).abs() < 1e-3,
+            "-30 dB is half lit"
+        );
+        drop(rig.service.release());
+        assert!(rig.service.input_level().abs() < f32::EPSILON, "released");
+    }
+
+    #[test]
     fn simultaneous_presses_open_the_microphone_only_once() {
         let rig = saying("hi");
         let outcomes = concurrent(|| rig.service.press().unwrap());
@@ -493,14 +556,18 @@ mod tests {
     #[test]
     fn the_service_listens_only_between_press_and_release() {
         let rig = saying("hi");
-        let mut listening = vec![rig.service.is_listening()];
+        let phase = |service: &DictationService| (service.is_listening(), service.is_finishing());
+        let mut phases = vec![phase(&rig.service)];
         rig.service.press().unwrap();
-        listening.push(rig.service.is_listening());
+        phases.push(phase(&rig.service));
         let utterance = rig.service.release().unwrap();
-        listening.push(rig.service.is_listening());
+        phases.push(phase(&rig.service));
         rig.service.finish(utterance).unwrap();
-        listening.push(rig.service.is_listening());
-        assert_eq!(listening, [false, true, false, false]);
+        phases.push(phase(&rig.service));
+        assert_eq!(
+            phases,
+            [(false, false), (true, false), (false, true), (false, false)]
+        );
     }
 
     #[test]
@@ -705,5 +772,19 @@ mod tests {
             format!("{:?}", rig.service),
             "DictationService { phase: Finishing, .. }"
         );
+    }
+
+    #[test]
+    fn the_report_runs_while_a_new_press_is_still_ignored() {
+        let rig = saying("hello");
+        assert_eq!(rig.service.press(), Ok(PressOutcome::Listening));
+        let utterance = rig.service.release().unwrap();
+        let mut seen = None;
+        let result = rig.service.finish_then(utterance, |result| {
+            seen = Some((result.clone(), rig.service.press()));
+        });
+        assert_eq!(result, Ok(DictationOutcome::Inserted { chars: 5 }));
+        assert_eq!(seen, Some((result, Ok(PressOutcome::Busy))));
+        assert_eq!(rig.service.press(), Ok(PressOutcome::Listening));
     }
 }

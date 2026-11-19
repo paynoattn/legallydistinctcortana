@@ -21,6 +21,7 @@ struct Recording {
     channels: u16,
     samples: Vec<f32>,
     limit: usize,
+    level: f32,
 }
 
 impl Recording {
@@ -31,11 +32,14 @@ impl Recording {
             channels,
             samples: Vec::new(),
             limit: usize::try_from(limit).unwrap_or(usize::MAX),
+            level: 0.0,
         }
     }
 
-    /// Adds interleaved input, averaging each frame's channels, up to the length limit.
+    /// Adds interleaved input, averaging each frame's channels, up to the length limit,
+    /// and remembers the block's loudness.
     fn push(&mut self, interleaved: &[f32]) {
+        self.level = rms(interleaved);
         let room = self.limit.saturating_sub(self.samples.len());
         let frames = interleaved.chunks(usize::from(self.channels.max(1)));
         self.samples.extend(frames.map(mean).take(room));
@@ -48,9 +52,19 @@ impl Recording {
     }
 }
 
+fn rms(block: &[f32]) -> f32 {
+    let squares: f32 = block.iter().map(|sample| sample * sample).sum();
+    (squares / count(block.len())).sqrt()
+}
+
 fn mean(frame: &[f32]) -> f32 {
-    let count = u16::try_from(frame.len()).map_or(f32::from(u16::MAX), f32::from);
-    frame.iter().sum::<f32>() / count.max(1.0)
+    frame.iter().sum::<f32>() / count(frame.len())
+}
+
+fn count(len: usize) -> f32 {
+    u16::try_from(len)
+        .map_or(f32::from(u16::MAX), f32::from)
+        .max(1.0)
 }
 
 type Shared = Arc<Mutex<Recording>>;
@@ -175,6 +189,12 @@ impl AudioInput for MicrophoneInput {
             .ok_or_else(|| CaptureError("the microphone was not recording".into()))?
             .finish()
     }
+
+    fn level(&self) -> f32 {
+        lock(&self.active)
+            .as_ref()
+            .map_or(0.0, |capture| lock(&capture.recording).level)
+    }
 }
 
 /// Only 32-bit float input is read; that is what shared-mode Windows audio delivers.
@@ -211,6 +231,24 @@ mod tests {
         recording.push(&[0.5, 0.25, -1.0, 0.0]);
         recording.push(&[1.0, 1.0]);
         assert_eq!(recorded(recording), [0.375, -0.5, 1.0]);
+    }
+
+    #[test]
+    fn the_level_is_the_rms_of_the_latest_block() {
+        let mut recording = Recording::new(16_000, 2);
+        assert!(recording.level.abs() < f32::EPSILON, "silent before input");
+        recording.push(&[0.5, -0.5, 0.5, -0.5]);
+        assert!((recording.level - 0.5).abs() < 1e-6, "steady half scale");
+        recording.push(&[0.3, 0.4]);
+        assert!(
+            (recording.level - 0.353_553_4).abs() < 1e-6,
+            "only the latest block counts"
+        );
+        recording.push(&[]);
+        assert!(
+            recording.level.abs() < f32::EPSILON,
+            "an empty block is silent"
+        );
     }
 
     #[test]
@@ -340,6 +378,19 @@ mod tests {
         let clip = microphone.stop().unwrap();
         assert_eq!(clip.sample_rate(), 1_000);
         assert_eq!(clip.samples(), [0.5, 0.25]);
+    }
+
+    #[test]
+    fn the_level_is_heard_only_while_recording() {
+        let microphone = MicrophoneInput::with_opener(fake_device);
+        assert!(microphone.level().abs() < f32::EPSILON, "not recording");
+        microphone.start().unwrap();
+        assert!(
+            (microphone.level() - 0.5).abs() < 1e-6,
+            "rms of the first buffer"
+        );
+        microphone.stop().unwrap();
+        assert!(microphone.level().abs() < f32::EPSILON, "stopped");
     }
 
     #[test]

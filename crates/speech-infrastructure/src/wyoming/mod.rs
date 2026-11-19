@@ -1,5 +1,6 @@
 pub(crate) mod codec;
 mod connection;
+mod probe;
 mod transcriber;
 
 use std::io::{self, BufReader};
@@ -11,6 +12,7 @@ use speech_domain::{AudioClip, Voice, VoiceChoice};
 use crate::WyomingConfig;
 use codec::{CodecError, Event, read_event};
 use connection::{DeadlineReader, Server};
+pub use probe::{PROBE_TIMEOUT, check_servers, server_answers};
 pub use transcriber::WyomingTranscriber;
 
 const PCM16_WIDTH: u64 = 2;

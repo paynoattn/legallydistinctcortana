@@ -63,9 +63,25 @@ ban = ["tokio", "serde_json", "reqwest", "tauri", "cpal", "arboard", "enigo", "w
 allow = ["kernel", "platform-ports", "speech-application", "speech-domain"]
 ban = ["tauri", "arboard", "enigo"]
 
+# Settings: value types and validation, use cases with a store port, and the file store.
+[crates.settings-domain]
+allow = []
+ban = ["tokio", "serde", "serde_json", "reqwest", "tauri", "cpal", "arboard", "enigo", "windows"]
+
+[crates.settings-application]
+allow = ["settings-domain"]
+ban = ["tokio", "serde", "serde_json", "reqwest", "tauri", "cpal", "arboard", "enigo", "windows"]
+
+[crates.settings-infrastructure]
+allow = ["settings-application", "settings-domain"]
+ban = ["tauri", "cpal", "arboard", "enigo"]
+
 # Tauri shell: composition root for the desktop UI host. Only it may depend on tauri.
 [crates.desktop]
-allow = ["kernel", "platform-desktop", "platform-ports", "speech-application", "speech-infrastructure"]
+allow = [
+  "kernel", "platform-desktop", "platform-ports", "settings-application",
+  "settings-infrastructure", "speech-application", "speech-infrastructure",
+]
 
 [crates.xtask]
 allow = []

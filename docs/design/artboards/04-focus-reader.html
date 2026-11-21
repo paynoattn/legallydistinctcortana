@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lampion artboard 04: focus reader</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+  html, body { margin: 0; }
+  body { background: #D9DBE7; font-family: var(--font-ui); color: var(--dusk); overflow-x: hidden; }
+  #wrap { position: relative; overflow: hidden; }
+  #stage { width: 1920px; height: 1080px; transform-origin: 0 0; }
+  #screen { position: relative; width: 1920px; height: 1080px; overflow: hidden; font-family: var(--font-os); font-size: 14px; color: #1B1B1B; background: #C9D2E4; }
+
+  /* ---------- the browser the selection came from (not ours, so not our type) ---------- */
+  .browser { position: absolute; left: 0; top: 0; width: 1920px; height: 1032px; display: grid; grid-template-rows: 40px 46px 1fr; background: #F7F7F9; }
+  .tabstrip { display: flex; align-items: flex-end; padding-left: 48px; background: linear-gradient(90deg, #E3E6F0, #E9E7EF 60%, #ECE8EC); }
+  .tab { height: 34px; width: 260px; display: flex; align-items: center; padding: 0 12px; font-size: 12px; background: #F7F7F9; border-radius: 8px 8px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .toolbar { display: flex; align-items: center; padding: 0 60px; border-bottom: 1px solid #E4E4E8; }
+  .omni { flex: 1; max-width: 1200px; height: 34px; border-radius: 17px; background: #EDEEF2; display: flex; align-items: center; padding: 0 16px; }
+  .omni span { color: #616161; }
+  .page { background: #FFF; overflow: hidden; }
+  .page article { width: 680px; margin: 0 auto; padding: 40px 0; font-family: Georgia, "Times New Roman", serif; color: #222; }
+  .page p { font-size: 20px; line-height: 1.65; margin: 0 0 26px; }
+  .page mark { background: #B5D5FF; color: inherit; }
+  .taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 48px; background: rgb(238 240 246 / .92); border-top: 1px solid rgb(0 0 0 / .08); display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .taskbar .app { width: 40px; height: 40px; border-radius: 5px; display: grid; place-items: center; }
+  .taskbar .app.active { background: rgb(255 255 255 / .7); }
+  .taskbar .clock { position: absolute; right: 18px; text-align: right; font-size: 12px; line-height: 1.35; }
+
+  /* ---------- the reader window (Lampion UI) ---------- */
+  .reader {
+    position: absolute; left: 530px; top: 186px; width: 860px; height: 660px;
+    display: grid; grid-template-rows: 48px 1fr auto;
+    background: var(--dusk); color: var(--paper); font-family: var(--font-ui);
+    border-radius: var(--r-window); overflow: hidden;
+    box-shadow: 0 32px 64px rgb(0 0 0 / .28), 0 2px 21px rgb(0 0 0 / .22), 0 0 0 1px rgb(255 241 199 / .08);
+    transition: opacity 160ms var(--ease-out), transform 160ms var(--ease-out);
+  }
+  .reader.opening, .reader.closed { opacity: 0; transform: scale(.97); }
+  .reader.closed { pointer-events: none; }
+  .reduce-motion .reader { transform: none !important; }
+
+  .titlebar { display: flex; align-items: center; gap: 12px; padding-left: 18px; }
+  .titlebar .from { font-size: 15px; color: var(--mist-dim); }
+  .titlebar .from b { font-weight: 400; color: var(--mist); }
+  .caption { margin-left: auto; display: flex; align-self: stretch; }
+  .caption button { all: unset; width: 46px; display: grid; place-items: center; color: var(--mist); }
+  .caption button:hover { background: var(--dusk-raise); }
+  .caption button.close:hover { background: #C42B1C; color: #FFF; }
+  .caption svg { width: 12px; height: 12px; }
+
+  .body { position: relative; overflow: hidden; }
+  .scroller {
+    position: absolute; inset: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgb(200 203 227 / .25) transparent;
+    -webkit-mask-image: linear-gradient(transparent 0, #000 64px, #000 calc(100% - 64px), transparent 100%);
+    mask-image: linear-gradient(transparent 0, #000 64px, #000 calc(100% - 64px), transparent 100%);
+  }
+  .text { --size: 25px; position: relative; width: 680px; margin: 0 auto; padding: 150px 0 320px; font-size: var(--size); line-height: 1.7; }
+  .text p { margin: 0 0 1.1em; }
+  /* Ramp on Dusk: now Paper 13.4:1, ahead Mist-dim 6.5:1, read #9095C2 5.2:1, lit word Dusk on Glow 8.7:1 */
+  .s { color: var(--mist-dim); transition: color var(--d-fade) var(--ease-out); }
+  .s.past { color: #9095C2; }
+  .s.now { color: var(--paper); transition-duration: 200ms; }
+  .w { position: relative; z-index: 1; cursor: pointer; }
+  .w:hover { text-decoration: underline; text-decoration-color: rgb(255 241 199 / .35); text-decoration-thickness: 2px; text-underline-offset: .24em; }
+  .w.on { color: var(--dusk); }
+  .w.on:hover { text-decoration: none; }
+  .light {
+    position: absolute; left: 0; top: 0; z-index: 0; width: 0; height: 0; opacity: 0; pointer-events: none;
+    border-radius: 7px; background: var(--glow); box-shadow: 0 0 22px 3px rgb(255 184 28 / .32);
+    transition: transform 130ms var(--ease-out), width 130ms var(--ease-out), opacity 240ms var(--ease-out);
+  }
+  .light.jump { transition: opacity 240ms var(--ease-out); }
+  .reduce-motion .light { transition: none; }
+
+  .follow {
+    all: unset; position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+    display: none; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: var(--r-pill);
+    background: var(--dusk); color: var(--paper); font: 600 15px var(--font-ui); cursor: pointer;
+    box-shadow: 0 0 0 1.5px var(--glow), 0 8px 20px rgb(0 0 0 / .3);
+  }
+  .follow.show { display: inline-flex; }
+  .follow:focus-visible { outline: 3px solid var(--glow); outline-offset: 3px; }
+  .follow svg { width: 16px; height: 16px; }
+
+  .bar { position: relative; padding: 12px 16px 14px; border-top: 1px solid var(--dusk-line); display: grid; gap: 10px; }
+  .progress { position: absolute; left: 0; right: 0; top: -1px; height: 3px; }
+  .progress i { display: block; height: 100%; width: 0; background: var(--glow); }
+  .row { display: flex; align-items: center; gap: 4px; }
+  .btn {
+    all: unset; box-sizing: border-box; position: relative; height: 40px; min-width: 40px; padding: 0 10px; border-radius: 10px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    font: 600 15px var(--font-ui); color: var(--paper); cursor: pointer; white-space: nowrap;
+  }
+  .btn:hover { background: var(--dusk-raise); }
+  .btn:focus-visible { outline: 3px solid var(--glow); outline-offset: 1px; }
+  .btn svg { width: 18px; height: 18px; }
+  .btn.play { width: 48px; height: 48px; padding: 0; border-radius: 50%; background: var(--paper); color: var(--dusk); margin: 0 2px; }
+  .btn.play:hover { background: #FFF; }
+  .btn.play svg { width: 20px; height: 20px; }
+  .btn .sw { width: 10px; height: 10px; border-radius: 50%; background: rgb(var(--tint)); }
+  .btn .dim { color: var(--mist-dim); font-weight: 400; }
+  .vsep { width: 1px; height: 24px; background: var(--dusk-line); margin: 0 8px; }
+  .status { margin-left: auto; font-size: 15px; color: var(--mist); text-align: right; padding-right: 4px; }
+  .status .note { color: var(--paper); }
+  .hint { font-size: 14px; color: var(--mist-dim); margin: 0 4px; }
+  kbd { font: inherit; color: var(--mist); border: 1px solid rgb(200 203 227 / .28); border-bottom-width: 2px; border-radius: 5px; padding: 0 6px; }
+
+  .moods {
+    position: absolute; bottom: calc(100% + 10px); left: 0; width: 224px; padding: 6px; z-index: 5;
+    background: var(--dusk-deep); border: 1px solid var(--dusk-line); border-radius: 12px; box-shadow: 0 12px 32px rgb(0 0 0 / .4);
+    display: none;
+  }
+  .moods.open { display: block; }
+  .moods button { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 10px; border-radius: 8px; font-size: 15px; color: var(--paper); cursor: pointer; }
+  .moods button:hover, .moods button:focus-visible { background: var(--dusk-raise); }
+  .moods button:focus-visible { outline: 2px solid var(--glow); outline-offset: -2px; }
+  .moods .n { width: 12px; color: var(--mist-dim); }
+  .moods .sw { width: 10px; height: 10px; border-radius: 50%; background: rgb(var(--tint)); }
+  .moods [aria-checked="true"]::after { content: "Now"; margin-left: auto; font-size: 13px; color: var(--mist-dim); }
+
+  /* ---------- strip below the screen (artboard controls, not product UI) ---------- */
+  .strip { max-width: 1180px; margin: 0 auto; padding: 28px 40px 64px; color: var(--dusk); font-size: 17px; line-height: 1.6; }
+  .strip h1 { font: 400 30px/1.2 var(--font-display); margin: 0 0 10px; }
+  .strip p { margin: 0 0 12px; max-width: 78ch; }
+  .strip .controls { display: flex; flex-wrap: wrap; gap: 12px 26px; align-items: center; margin-top: 14px; }
+  .strip button { font: 600 15px var(--font-ui); padding: 8px 14px; border-radius: 8px; border: 1.5px solid var(--dusk); background: transparent; color: var(--dusk); cursor: pointer; }
+  .strip button:focus-visible, .strip input:focus-visible { outline: 3px solid var(--plum); outline-offset: 2px; }
+  #said { color: var(--plum); min-height: 1.6em; }
+</style>
+</head>
+<body>
+<div id="wrap">
+<div id="stage">
+<div id="screen">
+
+  <div class="browser" aria-hidden="true">
+    <div class="tabstrip"><div class="tab">The night train is back, and it is slower on purpose</div></div>
+    <div class="toolbar"><div class="omni">waymarkjournal.com<span>/rail/2026/11/night-train-slower-on-purpose</span></div></div>
+    <div class="page"><article>
+      <p>Ten years ago this train did not exist. Overnight services had been cut route by route across the continent, undercut by budget airlines and by the plain arithmetic of a sleeper car: it carries a third as many people as a day coach and spends its days parked in a siding.</p>
+      <p><mark>What changed was not the trains but the passengers. A night train turns travel time into sleep time, and for a growing number of people that trade is worth more than speed. You board after dinner, wake up somewhere else, and step off in the middle of the city rather than at an airport an hour outside it. Operators say their busiest routes now sell out weeks ahead, even in November.</mark></p>
+      <p><mark>The trains themselves are a mixed bag. Some run new couchette cars with keycard locks and a USB-C socket in every berth; others still use carriages built in the 1980s, with windows that open and heating that does not always close. Regulars trade advice on which carriages to book and which to avoid, the way frequent fliers once traded seat maps.</mark></p>
+      <p><mark>Nobody claims the night train will replace the short-haul flight. The economics are still thin, track access at night competes with freight, and a single broken locomotive can strand four hundred people in a field outside Leipzig. But for a certain kind of trip, unhurried and city to city, it has become the obvious choice again.</mark></p>
+      <p><mark>At 21:04 exactly, the train pulls out. The cellist is asleep before Leuven.</mark></p>
+    </article></div>
+  </div>
+
+  <div class="taskbar" aria-hidden="true">
+    <span class="app"><svg width="20" height="20" viewBox="0 0 20 20"><rect x="1" y="1" width="8.4" height="8.4" fill="#2B7BE4"/><rect x="10.6" y="1" width="8.4" height="8.4" fill="#2B7BE4"/><rect x="1" y="10.6" width="8.4" height="8.4" fill="#2B7BE4"/><rect x="10.6" y="10.6" width="8.4" height="8.4" fill="#2B7BE4"/></svg></span>
+    <span class="app"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M2 6h7l2 2h9v10H2z" fill="#F2B640"/></svg></span>
+    <span class="app active"><svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="9" fill="#2F8FD8"/><path d="M5 12a6 6 0 0 1 12-1H8a3 3 0 0 0 6 1" fill="none" stroke="#fff" stroke-width="1.8"/></svg></span>
+    <span class="app"><svg width="22" height="22" viewBox="0 0 22 22"><rect x="2" y="4" width="18" height="14" rx="2" fill="#2B2B2B"/><path d="M6 9l3 2-3 2M11 14h5" stroke="#fff" stroke-width="1.5" fill="none"/></svg></span>
+    <div class="clock">9:14 PM<br>11/12/2026</div>
+  </div>
+
+  <section class="reader opening" id="reader" role="dialog" aria-label="Reader" aria-describedby="hint">
+    <header class="titlebar">
+      <div id="mark"></div>
+      <p class="from">Reading from <b>waymarkjournal.com</b></p>
+      <div class="caption">
+        <button class="close" id="btnClose" tabindex="-1" aria-label="Close"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.2"/></svg></button>
+      </div>
+    </header>
+
+    <div class="body">
+      <div class="scroller" id="scroller">
+        <div class="text" id="text" aria-live="off"><div class="light" id="light"></div></div>
+      </div>
+      <button class="follow" id="btnFollow"><svg viewBox="0 0 16 16"><path d="M8 2v11M3.5 8.5L8 13l4.5-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Follow the voice</button>
+    </div>
+
+    <footer class="bar">
+      <div class="progress"><i id="prog"></i></div>
+      <div class="row">
+        <button class="btn" id="btnPrev" aria-label="Previous sentence"><svg viewBox="0 0 20 20"><path d="M5 4v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M16 4.5v11L7.5 10z" fill="currentColor"/></svg></button>
+        <button class="btn play" id="btnPlay" aria-label="Pause"></button>
+        <button class="btn" id="btnNext" aria-label="Next sentence"><svg viewBox="0 0 20 20"><path d="M15 4v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 4.5v11l8.5-5.5z" fill="currentColor"/></svg></button>
+        <span class="vsep"></span>
+        <button class="btn" id="btnSpeed" aria-label="Speed"><span id="speedLabel">1.0×</span></button>
+        <span style="position:relative">
+          <button class="btn" id="btnMood" aria-haspopup="menu" aria-expanded="false"><span class="sw" id="moodSw"></span><span id="moodLabel">Calm</span></button>
+          <div class="moods" id="moods" role="menu" aria-label="Mood"></div>
+        </span>
+        <span class="btn" style="cursor:default" aria-hidden="true"><span class="dim">Alba, British English</span></span>
+        <p class="status" id="status" role="status"></p>
+      </div>
+      <p class="hint" id="hint"><kbd>Space</kbd> pauses. <kbd>←</kbd> <kbd>→</kbd> skip sentences. Click a word to read from its sentence. <kbd>Esc</kbd> stops and closes.</p>
+    </footer>
+  </section>
+
+</div>
+</div>
+</div>
+
+<section class="strip">
+  <h1>Focus reader</h1>
+  <p>Select text anywhere and press the read-aloud shortcut. A reader opens over your work with the text set large on Dusk, and starts reading at once in your last mood. The word being spoken is lit in Glow, the sentence around it is Paper, what has been read falls back to Mist. The text scrolls to keep the voice on a reading line a third of the way down; scroll yourself and it stops following until you ask.</p>
+  <p>Piper sends audio, not word timings. Lampion already speaks one sentence at a time, so it knows exactly when each sentence starts and how long it lasts. Inside a sentence it spreads the time over the words by syllables and punctuation, and snaps back to the truth at the next sentence. This page runs the same estimate on a silent clock. Turn on the browser voice to compare against real word-boundary events.</p>
+  <div class="controls">
+    <label><input type="checkbox" id="optVoice"> Speak with this browser's voice</label>
+    <label><input type="checkbox" id="optReduce"> Reduce motion</label>
+    <button id="btnReset">Reset the scene</button>
+    <span id="said" role="status"></span>
+  </div>
+</section>
+
+<script src="mark.js"></script>
+<script>
+(function () {
+  const q = new URLSearchParams(location.search);
+  const STATIC = q.has("static");
+  const $ = (id) => document.getElementById(id);
+  const reader = $("reader"), scroller = $("scroller"), text = $("text"), light = $("light");
+  if (q.get("reduce") === "1") { document.body.classList.add("reduce-motion"); $("optReduce").checked = true; }
+  const reduced = () => document.body.classList.contains("reduce-motion") || Lampion.prefersReduced();
+
+  function fit() {
+    const s = Math.min(1, document.documentElement.clientWidth / 1920);
+    $("stage").style.transform = `scale(${s})`;
+    $("wrap").style.height = 1080 * s + "px";
+  }
+  addEventListener("resize", fit); fit();
+
+  const ICON = {
+    pause: '<svg viewBox="0 0 20 20"><rect x="4.5" y="3.5" width="4" height="13" rx="1.2" fill="currentColor"/><rect x="11.5" y="3.5" width="4" height="13" rx="1.2" fill="currentColor"/></svg>',
+    play: '<svg viewBox="0 0 20 20"><path d="M6 3.8v12.4L16 10z" fill="currentColor"/></svg>',
+    again: '<svg viewBox="0 0 20 20"><path d="M4.5 10a5.5 5.5 0 1 0 1.8-4.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M5.6 2.6v4h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  };
+  const MOODS = ["neutral", "calm", "cheerful", "alert", "urgent", "angry", "mad", "whisper", "deadpan"];
+  const label = (m) => m[0].toUpperCase() + m.slice(1);
+  const PITCH = { neutral: 1, calm: 0.95, cheerful: 1.15, alert: 1.05, urgent: 1.1, angry: 0.9, mad: 0.85, whisper: 1, deadpan: 0.9 };
+  const SPEEDS = [1, 1.25, 1.5, 2, 0.75];
+  const fmtSpeed = (v) => (Number.isInteger(v) ? v.toFixed(1) : String(v)) + "×";
+
+  /* ---------- the estimate: syllables plus punctuation, per sentence ---------- */
+  const UNIT = 165;   /* ms per weight unit at 1.0×, about 170 words a minute */
+  const TAIL = 380;   /* pause after a sentence at 1.0× */
+  function syllables(tok) {
+    const w = tok.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (!w) return 0;
+    if (/^\d+$/.test(w)) return w.length * 1.4;
+    let n = (w.match(/[aeiouy]+/g) || []).length;
+    if (n > 1 && /[^aeiouy]e$/.test(w) && !/[^aeiouy]le$/.test(w)) n--;
+    return Math.max(1, n);
+  }
+  function weight(tok) {
+    let wt = syllables(tok) + 0.25;
+    if (/[,;:—–]["'”’)]*$/.test(tok)) wt += 1.3;
+    return wt;
+  }
+
+  /* ---------- build the text: paragraphs, sentences, words ---------- */
+  const PARAS = [...document.querySelectorAll(".page p")].filter((p) => p.querySelector("mark")).map((p) => p.textContent.trim());
+  const SENT_RE = /[^.!?]+(?:[.!?]+["'”’)\]]*|$)\s*/g;
+  const sentences = [];
+  for (const para of PARAS) {
+    const p = document.createElement("p");
+    for (const m of para.matchAll(SENT_RE)) {
+      if (!m[0].trim()) continue;
+      const s = document.createElement("span");
+      s.className = "s";
+      const sent = { el: s, words: [], units: 0 };
+      const toks = m[0].trim().split(/\s+/);
+      toks.forEach((tok, i) => {
+        const w = document.createElement("span");
+        w.className = "w";
+        w.textContent = tok;
+        w.dataset.s = String(sentences.length);
+        s.append(w);
+        if (i < toks.length - 1) s.append(" ");
+        const wt = weight(tok);
+        sent.words.push({ el: w, text: tok, weight: wt });
+        sent.units += wt;
+      });
+      p.append(s, " ");
+      sentences.push(sent);
+    }
+    text.append(p);
+  }
+  const TOTAL_UNITS = sentences.reduce((a, s) => a + s.units, 0);
+  const unitsBefore = (i) => sentences.slice(0, i).reduce((a, s) => a + s.units, 0);
+
+  function plan(sent, speed) {
+    const starts = [];
+    let t = 0;
+    for (const w of sent.words) { starts.push(t); t += (w.weight * UNIT) / speed; }
+    return { starts, speech: t, dur: t + TAIL / speed };
+  }
+
+  /* ---------- state ---------- */
+  const R = { si: 0, wi: -1, playing: false, finished: false, speed: 1, nextSpeed: 1, mood: q.get("mood") || "calm", start: 0, elapsed: 0, plan: null, following: true, boundary: false, note: "", noteUntil: 0 };
+  const lp = Lampion.mount($("mark"), { size: 30, state: "armed", mood: R.mood });
+  const env = Lampion.speechEnvelope(11);
+
+  /* ---------- the light ---------- */
+  let lastTop = null;
+  function placeLight(el) {
+    const x = el.offsetLeft - 5, y = el.offsetTop - 1, w = el.offsetWidth + 10, h = el.offsetHeight + 2;
+    const jump = lastTop === null || Math.abs(y - lastTop) > 2 || light.style.opacity !== "1";
+    light.classList.toggle("jump", jump);
+    light.style.width = w + "px";
+    light.style.height = h + "px";
+    light.style.transform = `translate(${x}px, ${y}px)`;
+    light.style.opacity = "1";
+    if (jump) follow(y);
+    lastTop = y;
+  }
+  function follow(y, instant) {
+    if (!R.following) return;
+    const top = y - scroller.clientHeight * 0.36;
+    scroller.scrollTo({ top, behavior: instant || reduced() ? "auto" : "smooth" });
+  }
+  function setWord(wi) {
+    if (wi === R.wi) return;
+    const words = sentences[R.si].words;
+    if (R.wi >= 0 && words[R.wi]) words[R.wi].el.classList.remove("on");
+    R.wi = wi;
+    words[wi].el.classList.add("on");
+    placeLight(words[wi].el);
+  }
+  function clearWord() {
+    text.querySelectorAll(".w.on").forEach((w) => w.classList.remove("on"));
+    R.wi = -1;
+  }
+  function markSentences() {
+    sentences.forEach((s, i) => { s.el.className = "s" + (R.finished || i < R.si ? " past" : i === R.si ? " now" : ""); });
+  }
+
+  /* ---------- playback ---------- */
+  let utter = null;
+  const voiceOn = () => $("optVoice").checked && "speechSynthesis" in window;
+
+  function beginSentence(i, now) {
+    clearWord();
+    R.si = i;
+    R.speed = R.nextSpeed;
+    R.plan = plan(sentences[i], R.speed);
+    R.start = now;
+    R.elapsed = 0;
+    R.boundary = false;
+    markSentences();
+    setWord(0);
+    if (voiceOn()) speak(i);
+  }
+  function speak(i) {
+    speechSynthesis.cancel();
+    const s = sentences[i];
+    const offs = [];
+    let o = 0;
+    for (const w of s.words) { offs.push(o); o += w.text.length + 1; }
+    const u = new SpeechSynthesisUtterance(s.words.map((w) => w.text).join(" "));
+    u.rate = R.speed;
+    u.pitch = PITCH[R.mood];
+    u.onboundary = (ev) => {
+      if (u !== utter || ev.name !== "word") return;
+      R.boundary = true;
+      let wi = 0;
+      while (wi + 1 < offs.length && offs[wi + 1] <= ev.charIndex) wi++;
+      setWord(wi);
+    };
+    u.onend = () => {
+      if (u !== utter || !R.playing) return;
+      if (i + 1 < sentences.length) beginSentence(i + 1, performance.now()); else finish();
+    };
+    utter = u;
+    speechSynthesis.speak(u);
+  }
+  function stopVoice() { utter = null; if ("speechSynthesis" in window) speechSynthesis.cancel(); }
+
+  function play() {
+    if (R.finished) { R.finished = false; R.playing = true; beginSentence(0, performance.now()); R.following = true; $("btnFollow").classList.remove("show"); }
+    else {
+      R.playing = true;
+      R.start = performance.now() - R.elapsed;
+      if (voiceOn()) speak(R.si);
+    }
+    lp.set("speaking", { mood: R.mood });
+    controls();
+  }
+  function pause() {
+    R.playing = false;
+    R.elapsed = performance.now() - R.start;
+    stopVoice();
+    lp.set("idle");
+    controls();
+  }
+  function toggle() { R.playing ? pause() : play(); }
+  function jumpTo(i) {
+    stopVoice();
+    R.finished = false;
+    R.playing = true;
+    R.following = true;
+    $("btnFollow").classList.remove("show");
+    lp.set("speaking", { mood: R.mood });
+    beginSentence(Math.max(0, Math.min(sentences.length - 1, i)), performance.now());
+    controls();
+  }
+  function prev() { jumpTo(R.elapsed > 1500 ? R.si : R.si - 1); }
+  function next() { if (R.si + 1 < sentences.length) jumpTo(R.si + 1); }
+  function finish() {
+    R.playing = false;
+    R.finished = true;
+    stopVoice();
+    clearWord();
+    light.style.opacity = "0";
+    lastTop = null;
+    markSentences();
+    lp.set("idle");
+    lp.pulse();
+    controls();
+  }
+  function close() {
+    pause();
+    reader.classList.add("closed");
+    $("said").textContent = "Reading stopped and the reader closed. Focus went back to the browser.";
+  }
+
+  function noteFor(msg) { R.note = msg; R.noteUntil = performance.now() + 2600; }
+
+  /* ---------- controls ---------- */
+  function controls() {
+    const b = $("btnPlay");
+    const kind = R.finished ? "again" : R.playing ? "pause" : "play";
+    if (b.dataset.kind !== kind) { b.innerHTML = ICON[kind]; b.dataset.kind = kind; }
+    b.setAttribute("aria-label", kind === "again" ? "Read again" : kind === "pause" ? "Pause" : "Resume");
+    $("speedLabel").textContent = fmtSpeed(R.nextSpeed);
+    $("moodLabel").textContent = label(R.mood);
+    $("moodSw").style.setProperty("--tint", `var(--mood-${R.mood})`);
+    status(performance.now());
+  }
+  function status(now) {
+    const el = $("status");
+    let msg;
+    if (R.noteUntil > now) msg = `<span class="note">${R.note}</span>`;
+    else if (R.finished) msg = "Finished reading.";
+    else if (!R.plan) msg = "Getting the voice ready.";
+    else {
+      const into = Math.min(1, R.elapsed / R.plan.dur) * sentences[R.si].units;
+      const leftMs = ((TOTAL_UNITS - unitsBefore(R.si) - into) * UNIT + (sentences.length - R.si) * TAIL) / R.nextSpeed;
+      const mins = leftMs / 60000;
+      const left = mins < 1 ? "under a minute left" : `about ${Math.round(mins)} ${Math.round(mins) === 1 ? "minute" : "minutes"} left`;
+      msg = `${R.playing ? "" : "Paused. "}Sentence ${R.si + 1} of ${sentences.length}, ${left}.`;
+    }
+    if (el.innerHTML !== msg) el.innerHTML = msg;
+  }
+  function progress() {
+    let f = 1;
+    if (!R.finished && R.plan) f = (unitsBefore(R.si) + Math.min(1, R.elapsed / R.plan.dur) * sentences[R.si].units) / TOTAL_UNITS;
+    if (!R.plan) f = 0;
+    $("prog").style.width = (f * 100).toFixed(2) + "%";
+    $("prog").style.background = R.finished ? "var(--mist-dim)" : "";
+  }
+
+  $("btnPlay").onclick = toggle;
+  $("btnPrev").onclick = prev;
+  $("btnNext").onclick = next;
+  $("btnClose").onclick = close;
+  $("btnSpeed").onclick = () => {
+    R.nextSpeed = SPEEDS[(SPEEDS.indexOf(R.nextSpeed) + 1) % SPEEDS.length];
+    if (R.playing && R.nextSpeed !== R.speed) noteFor(`${fmtSpeed(R.nextSpeed)} from the next sentence.`);
+    controls();
+  };
+
+  const moods = $("moods");
+  MOODS.forEach((m, i) => {
+    const b = document.createElement("button");
+    b.setAttribute("role", "menuitemradio");
+    b.dataset.mood = m;
+    b.innerHTML = `<span class="n">${i + 1}</span><span class="sw" style="--tint: var(--mood-${m})"></span>${label(m)}`;
+    b.onclick = () => chooseMood(m);
+    moods.append(b);
+  });
+  function openMoods(open) {
+    moods.classList.toggle("open", open);
+    $("btnMood").setAttribute("aria-expanded", String(open));
+    moods.querySelectorAll("button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.mood === R.mood)));
+    if (open) moods.querySelector(`[data-mood="${R.mood}"]`).focus();
+  }
+  function chooseMood(m) {
+    R.mood = m;
+    lp.mood(m);
+    openMoods(false);
+    $("btnMood").focus();
+    if (R.playing) noteFor(`${label(m)} from the next sentence.`);
+    controls();
+  }
+  $("btnMood").onclick = () => openMoods(!moods.classList.contains("open"));
+  moods.addEventListener("keydown", (e) => {
+    const items = [...moods.querySelectorAll("button")];
+    const i = items.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") { items[(i + 1) % items.length].focus(); e.preventDefault(); e.stopPropagation(); }
+    if (e.key === "ArrowUp") { items[(i - 1 + items.length) % items.length].focus(); e.preventDefault(); e.stopPropagation(); }
+  });
+
+  text.addEventListener("click", (e) => {
+    const w = e.target.closest(".w");
+    if (w) jumpTo(Number(w.dataset.s));
+  });
+  const stopFollowing = () => { if (!R.following) return; R.following = false; $("btnFollow").classList.add("show"); };
+  scroller.addEventListener("wheel", stopFollowing, { passive: true });
+  scroller.addEventListener("pointerdown", (e) => { if (e.target === scroller) stopFollowing(); });
+  $("btnFollow").onclick = () => { R.following = true; $("btnFollow").classList.remove("show"); if (lastTop !== null) follow(lastTop); };
+
+  document.addEventListener("keydown", (e) => {
+    if (reader.classList.contains("closed") || e.target.closest(".strip")) return;
+    const menuOpen = moods.classList.contains("open");
+    if (e.key === "Escape") { e.preventDefault(); menuOpen ? (openMoods(false), $("btnMood").focus()) : close(); return; }
+    if (/^[1-9]$/.test(e.key)) { chooseMood(MOODS[Number(e.key) - 1]); return; }
+    if (menuOpen) return;
+    if (e.key === " " || e.key === "k") { e.preventDefault(); toggle(); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); prev(); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); next(); }
+    else if (e.ctrlKey && (e.key === "=" || e.key === "+" || e.key === "-")) {
+      e.preventDefault();
+      const cur = parseFloat(getComputedStyle(text).getPropertyValue("--size"));
+      const size = Math.max(20, Math.min(40, cur + (e.key === "-" ? -3 : 3)));
+      text.style.setProperty("--size", size + "px");
+      lastTop = null;
+      if (R.wi >= 0) placeLight(sentences[R.si].words[R.wi].el);
+    }
+  });
+
+  $("optReduce").onchange = (e) => document.body.classList.toggle("reduce-motion", e.target.checked);
+  $("optVoice").onchange = () => { if (R.playing) { stopVoice(); if (voiceOn()) speak(R.si); } };
+  $("btnReset").onclick = () => { stopVoice(); location.reload(); };
+
+  /* ---------- the clock ---------- */
+  function frame(now) {
+    if (R.playing && R.plan) {
+      R.elapsed = now - R.start;
+      if (!voiceOn()) {
+        if (R.elapsed >= R.plan.dur) {
+          if (R.si + 1 < sentences.length) beginSentence(R.si + 1, now); else finish();
+        } else {
+          let wi = 0;
+          while (wi + 1 < R.plan.starts.length && R.plan.starts[wi + 1] <= R.elapsed) wi++;
+          setWord(wi);
+        }
+      } else if (!R.boundary) {
+        let wi = 0;
+        while (wi + 1 < R.plan.starts.length && R.plan.starts[wi + 1] <= R.elapsed) wi++;
+        setWord(wi);
+      }
+      lp.level(R.elapsed < (R.plan ? R.plan.speech : 0) ? env(now).v : 0.05);
+    }
+    status(now);
+    progress();
+    requestAnimationFrame(frame);
+  }
+
+  /* ---------- start ---------- */
+  document.fonts.ready.then(() => {
+    if (STATIC) {
+      reader.classList.remove("opening");
+      R.si = 2;
+      R.playing = true;
+      R.plan = plan(sentences[2], 1);
+      R.elapsed = R.plan.starts[9];
+      markSentences();
+      lp.set("speaking").freeze({ level: 0.55, halo: 0.55 });
+      setWord(9);
+      follow(lastTop, true);
+      controls();
+      status(0);
+      progress();
+      return;
+    }
+    requestAnimationFrame(() => reader.classList.remove("opening"));
+    controls();
+    requestAnimationFrame(frame);
+    setTimeout(() => {
+      R.playing = true;
+      lp.set("speaking", { mood: R.mood });
+      beginSentence(0, performance.now());
+      controls();
+      $("btnPlay").focus({ preventScroll: true });
+    }, 650);
+  });
+})();
+</script>
+</body>
+</html>

@@ -9,7 +9,7 @@
 **MVP slice implemented** on branch `feat/read-aloud` (2026-11-14). It differs from the design below:
 
 - Selection capture uses the clipboard (Ctrl+C with marker, wait, and restore) in `platform-desktop`. The UI Automation path and the password-field and elevated-window checks are still open, so scenarios for those remain to do.
-- The shortcut always opens the mood window (`read-aloud`) next to the cursor. The "default mood without the picker" variant is still open.
+- The shortcut opened a mood window next to the cursor. Since #095 it opens the focus reader instead, which starts at once in the last mood; the mood is picked in the reader.
 - Speech goes to a Wyoming Piper server (`VOICE_HOST`) rather than the in-process engines of #025. Moods use the prosody fallback of #027.
 - **Known gaps:**
   - **Clipboard:** the capture briefly replaces the clipboard. Every format is saved byte for byte and put back. If any format cannot be read (for example OLE-only or graphics-handle-only content), the capture refuses with a message and leaves the clipboard untouched. If you copy something during the 600 ms window, the restore overwrites it. UI Automation removes all of this.

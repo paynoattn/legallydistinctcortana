@@ -1,6 +1,6 @@
 # Lampion artboards
 
-Live HTML artboards for the three places Lampion meets the user. Each opens directly from disk (no server or build) and loads its fonts from Google Fonts. Open [`index.html`](index.html) first.
+Live HTML artboards for the places Lampion meets the user. Each opens directly from disk (no server or build) and loads its fonts from Google Fonts. Open [`index.html`](index.html) first.
 
 | File | What it is |
 | --- | --- |
@@ -8,6 +8,7 @@ Live HTML artboards for the three places Lampion meets the user. Each opens dire
 | `01-overlay-storyboard.html` → `01-overlay-states.png` | The seven overlay states, each a 2× crop of the corner, with timing. |
 | `02-read-aloud-context-menu.html` → `02-read-aloud-context-menu.png` | An Edge-like browser with the Chromium context menu, the mood submenu, the reading pill and Web Speech playback. |
 | `03-today.html` → `03-today.png` | The full-screen Today view, with keyboard, mouse and gamepad navigation. |
+| `04-focus-reader.html` → `04-focus-reader.png` | The focus reader: the read-aloud shortcut opens a window that lights each word as Piper speaks it. |
 | `tokens.css` | Shared tokens, plus the CSS for the animated mark. |
 | `mark.js` | The animated mark (state, level, rings, pulse, flicker, frozen poses for screenshots), shared by all three. |
 
@@ -16,6 +17,7 @@ Query strings for deterministic screenshots:
 - `01-overlay.html?state=hidden|armed|listening|thinking|inserted|speaking|error`, plus `&mood=calm|alert|angry|…`, `&bounds=1` to outline the 160 × 160 window, and `&reduce=1` for reduced motion.
 - `02-read-aloud-context-menu.html?static=1` (menu open) or `?state=reading&mood=calm`.
 - `03-today.html?static=1` freezes the clock at 8:42 AM and the lantern's breathing.
+- `04-focus-reader.html?static=1` freezes on sentence 3 with "step" lit; `&reduce=1` turns off the gliding light and smooth scroll.
 
 ```sh
 CHROME="/c/Program Files/Google/Chrome/Application/chrome.exe"
@@ -94,6 +96,37 @@ Checked:
 - In the read-aloud page: the menu, the submenu and keyboard navigation; the no-selection menu; mood, speed, pause, stop and Esc; and the sentence and word highlights.
 - On Today: spatial navigation with arrows and D-pad, stick repeat (400 ms, then 150 ms), LB/RB, A, B (closes settings first, then goes to the desktop), Y, and Menu.
 
+## Focus reader
+
+The read-aloud shortcut opens a reader instead of reading blind. It is a proposal that changes the MVP in issue 028 (the shortcut opens the mood window) and sits beside the reading pill of issue 030 (reading without a window).
+
+**Flow.** Select text, press the shortcut. The reader opens over the work (860 × 660 logical px, centred on the monitor the selection is on) and starts at once in the last mood and voice. A two-step flow (pick a mood, then read) costs a key press on every read, so the mood moves into the control bar, where 1 to 9 still pick one. Esc stops, closes, and returns focus to the app the text came from.
+
+**What is lit.**
+
+| Thing | Color | Contrast on Dusk |
+| --- | --- | --- |
+| The word being spoken | Dusk on a Glow light that glides from word to word (130 ms) and jumps on a new line | 8.7:1 |
+| The sentence being spoken | Paper | 13.4:1 |
+| Sentences ahead | Mist-dim | 6.5:1 |
+| Sentences read | `#9095C2` | 5.2:1 |
+
+Only the spoken word and the progress line are Glow, and the line turns Mist-dim when reading finishes. Ideally the corner lantern stays hidden while the reader is open, so the 30 px lantern in the title bar is the one light on screen; issue 095 leaves the overlay unchanged for now.
+
+**Following.** The text scrolls to keep the lit line about a third of the way down. Scrolling with the wheel or the scrollbar stops following and shows "Follow the voice". Clicking a word reads from the start of its sentence, not mid-sentence, because a cut into a synthesized clip starts mid-syllable.
+
+**Timing without timestamps.** Wyoming Piper returns audio only (`audio-start`, `audio-chunk`, `audio-stop`), with no word or phoneme times. Speech is already one clip per sentence, so:
+
+1. The core reports `{ index, startsInMs, speechMs }` as each sentence is queued on the speakers: `startsInMs` is the audio already queued ahead of it, and `speechMs` excludes the mood's trailing pause.
+2. The UI spreads `speech_ms` over the sentence's words by weight: estimated syllables (vowel groups, minus a silent final e), digits at 1.4 each, plus 1.3 after a comma, semicolon, colon or dash, plus 0.25 per word.
+3. Each new sentence snaps the light back to the true clock, so drift never carries over. Within a sentence the error is a word or so on long numbers and abbreviations.
+
+If a later Piper or engine (#025) reports phoneme alignments, the same event can carry real word start times and step 2 drops out. In the artboard, speed and mood apply from the next sentence. The product restarts the current sentence instead (issue 095), because a reading can start from any sentence; speed waits for rate support in the synthesizer.
+
+**Bundle.** It is the existing `read-aloud` window restyled, with no new dependencies: spans per word, one absolutely positioned light, and a `useSyncExternalStore` store fed by `requestAnimationFrame` and the sentence events. Long selections (the 20,000-character cap) need the words of far-off paragraphs to stay plain text until they are near, to keep the DOM small.
+
+**Accessibility.** The text column is a normal document, so a screen reader can read it, and the live highlight is not announced (`aria-live="off"`). The status line is the live region. Text size goes from 20 to 40 px with Ctrl and plus or minus. Reduced motion keeps the light and the colors but jumps instead of gliding and scrolls instantly.
+
 ## Accessibility notes
 
 - Focus on Today is a 3 px Glow ring plus a soft outer ring and a faint fill, on everything focusable. Under `forced-colors` it uses the system Highlight color. The ring follows the mouse, as in a console shell, so the pointer and the controller never disagree.
@@ -110,3 +143,4 @@ Checked:
 5. **The reading pill's position.** It sits left of the lantern above the taskbar. With a vertical taskbar or a second monitor it needs a rule, probably "the corner of the monitor the selection is on".
 6. **The Today light in the morning.** Dusk is an evening scene, and Today opens at sign-in, usually in the morning. A dawn variant (a lighter Dusk, a cooler pool) could follow the clock. Worth trying before calling the palette final.
 7. **Mood tints on light wallpapers.** Calm (lavender) and Deadpan (grey) halos are faint on pale wallpapers. The mark stays legible thanks to its Dusk keyline, but the mood is hard to see. A thin ring in the tint would carry it.
+8. **Focus reader or pill by default?** The focus reader suits an article you want to follow; the pill suits a paragraph you want to hear while you keep working. One setting ("When I read aloud: open the reader / just read") or a modifier (Shift for the other one) both work. The reader also needs a rule for a second monitor and for a full-screen game, where it should probably fall back to the pill.

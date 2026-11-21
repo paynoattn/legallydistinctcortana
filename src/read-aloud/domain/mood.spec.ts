@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isMoodId, MOODS, moodForKey, moodLabel } from './mood.ts';
+import { isMoodId, MOODS, moodForKey, moodLabel, storedMood } from './mood.ts';
 
 describe('moods', () => {
   it('offers nine moods with distinct ids, labels and hints', () => {
@@ -47,5 +47,15 @@ describe('moods', () => {
 
   it.each(['0', '10', 'a', '', '11', '1a', 'a1', ' 1', '١'])('maps key %j to nothing', (key) => {
     expect(moodForKey(key)).toBeUndefined();
+  });
+});
+
+describe('storedMood', () => {
+  it('keeps a stored mood it knows', () => {
+    expect(storedMood('whisper')).toBe('whisper');
+  });
+
+  it.each([null, 'sad', ''])('falls back to neutral for %j', (stored) => {
+    expect(storedMood(stored)).toBe('neutral');
   });
 });

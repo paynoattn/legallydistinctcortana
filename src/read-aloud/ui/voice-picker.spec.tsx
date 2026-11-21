@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { VoiceCatalog, VoicePreferences } from '../application/ports.ts';
 import { VoiceStore } from '../application/voice-store.ts';
 import type { VoiceChoice } from '../domain/voice.ts';
-import { FAKE_VOICES } from '../infrastructure/fake-read-aloud-gateway.ts';
+import { FAKE_VOICES } from '../infrastructure/fake-read-aloud-ipc.ts';
 import { VoicePicker } from './voice-picker.tsx';
 
 class ScriptedCatalog implements VoiceCatalog {
@@ -37,6 +37,7 @@ interface Started {
   readonly catalog: ScriptedCatalog;
   readonly store: VoiceStore;
   readonly dismissals: number[];
+  readonly picks: number[];
   readonly user: ReturnType<typeof userEvent.setup>;
 }
 
@@ -48,8 +49,15 @@ function start(stored: VoiceChoice | null = null): Started {
     preferredLanguage: 'en-US',
   });
   const dismissals: number[] = [];
-  render(<VoicePicker store={store} onDismiss={() => dismissals.push(dismissals.length)} />);
-  return { catalog, store, dismissals, user: userEvent.setup() };
+  const picks: number[] = [];
+  render(
+    <VoicePicker
+      store={store}
+      onDismiss={() => dismissals.push(dismissals.length)}
+      onPicked={() => picks.push(picks.length)}
+    />,
+  );
+  return { catalog, store, dismissals, picks, user: userEvent.setup() };
 }
 
 async function startReady(
@@ -219,6 +227,28 @@ describe('VoicePicker choosing the default speaker', () => {
     await user.selectOptions(speaker(), 'p239');
     expect(store.current()).toEqual({ name: 'en_US-libritts-high', speaker: 'p239' });
     expect(speaker().value).toBe('p239');
+  });
+});
+
+describe('VoicePicker telling the reader a voice was picked', () => {
+  it.each([
+    ['language', language, 'de_DE'],
+    ['voice', voice, 'en_US-amy-medium'],
+    ['speaker', speaker, 'p240'],
+  ])('reports a pick on the %s select after the choice is made', async (_name, select, value) => {
+    const { picks, store, user } = await startReady({
+      name: 'en_US-libritts-high',
+      speaker: 'p239',
+    });
+    const before = store.current();
+    await user.selectOptions(select(), value);
+    expect(picks).toEqual([0]);
+    expect(store.current()).not.toEqual(before);
+  });
+
+  it('reports nothing before a pick', async () => {
+    const { picks } = await startReady();
+    expect(picks).toEqual([]);
   });
 });
 

@@ -1,20 +1,21 @@
-//! Wiring for "read selected text aloud": what the shortcut does, the context window next to
-//! the cursor, and the commands the window calls. The behavior lives in `speech-application`;
+//! Wiring for "read selected text aloud": what the shortcut does, the reader window centred on
+//! the monitor under the cursor, and the commands the window calls. The behavior lives in `speech-application`;
 //! the service itself comes from [`Voice`], so it follows the voice server setting.
 
 use std::sync::{Mutex, PoisonError};
 use std::thread;
+use std::time::Duration;
 
 use kernel::{Mood, UnknownMood};
-use platform_ports::{Point, Rect, Size, popup_origin};
+use platform_ports::{Point, Rect, Size, centred_origin};
 use serde::{Deserialize, Serialize};
 use speech_application::{
-    OverlayEvent, ReadAloudError, ReadOutcome, Readings, SelectionPreview, ShortcutOutcome,
-    Voice as VoiceInfo, VoiceChoice,
+    OverlayEvent, ReadAloudError, ReadOutcome, Readings, SelectionPreview, Sentence,
+    SentenceTiming, Voice as VoiceInfo, VoiceChoice,
 };
 use tauri::{
-    App, AppHandle, Emitter, Manager, PhysicalPosition, Runtime, State, WebviewWindow, Window,
-    WindowEvent,
+    App, AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize, Runtime, State,
+    WebviewWindow,
 };
 
 use crate::overlay::Overlay;
@@ -23,6 +24,10 @@ use crate::voice::Voice;
 const POPUP: &str = "read-aloud";
 const SELECTION_EVENT: &str = "read-aloud:selection";
 const STATUS_EVENT: &str = "read-aloud:status";
+const NORMAL_SPEED: u32 = 1_000;
+const SENTENCE_EVENT: &str = "read-aloud:sentence";
+const READER_WIDTH: f64 = 860.0;
+const READER_HEIGHT: f64 = 660.0;
 
 pub(crate) struct ReadAloud {
     last_selection: Mutex<Option<SelectionPayload>>,
@@ -36,8 +41,55 @@ pub(crate) struct ReadAloud {
     rename_all_fields = "camelCase"
 )]
 pub(crate) enum SelectionPayload {
-    Ready { preview: String, char_count: usize },
-    Failed { message: String },
+    Ready {
+        preview: String,
+        char_count: usize,
+        sentences: Vec<SentencePayload>,
+    },
+    Failed {
+        message: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SentencePayload {
+    text: String,
+    starts_paragraph: bool,
+}
+
+impl From<Sentence> for SentencePayload {
+    fn from(sentence: Sentence) -> Self {
+        Self {
+            text: sentence.text,
+            starts_paragraph: sentence.starts_paragraph,
+        }
+    }
+}
+
+/// When a queued sentence will be heard, for the reader's word timing.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SentencePlayback {
+    reading: u64,
+    index: usize,
+    starts_in_ms: u64,
+    speech_ms: u64,
+}
+
+impl SentencePlayback {
+    fn new(reading: u64, timing: SentenceTiming) -> Self {
+        Self {
+            reading,
+            index: timing.index,
+            starts_in_ms: millis(timing.starts_in),
+            speech_ms: millis(timing.speech),
+        }
+    }
+}
+
+fn millis(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -53,13 +105,17 @@ enum StatusPayload {
     Failed { message: String },
 }
 
-/// What the read-aloud window asks for when a mood is chosen.
+/// What the reader asks for: a mood, a voice, and the sentence to start from (the first when
+/// absent).
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ReadRequest {
     mood: String,
     voice: Option<String>,
     speaker: Option<String>,
+    from_sentence: Option<usize>,
+    /// Reading speed in thousandths (1000 = normal), pitch kept.
+    speed: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -88,6 +144,11 @@ impl From<Result<SelectionPreview, ReadAloudError>> for SelectionPayload {
             Ok(preview) => Self::Ready {
                 preview: preview.text,
                 char_count: preview.char_count,
+                sentences: preview
+                    .sentences
+                    .into_iter()
+                    .map(SentencePayload::from)
+                    .collect(),
             },
             Err(error) => Self::Failed {
                 message: error.to_string(),
@@ -123,18 +184,17 @@ pub(crate) fn setup(app: &App) {
     });
 }
 
-/// The read-aloud shortcut was released: capture the selection and show the window, or stop
-/// a reading in progress.
+/// The read-aloud shortcut was released: stop any reading, capture the selection, and show
+/// it in the reader, which starts reading it.
 pub(crate) fn on_shortcut<R: Runtime>(app: &AppHandle<R>) {
     let app = app.clone();
     thread::spawn(move || {
         let service = app.state::<Voice>().read_aloud();
-        if let ShortcutOutcome::Captured(selection) = service.toggle() {
-            let payload = SelectionPayload::from(selection);
-            remember(&app, payload.clone());
-            show_popup(&app);
-            emit(&app, SELECTION_EVENT, payload);
-        }
+        service.stop();
+        let payload = SelectionPayload::from(service.capture_selection());
+        remember(&app, payload.clone());
+        show_popup(&app);
+        emit(&app, SELECTION_EVENT, payload);
     });
 }
 
@@ -154,16 +214,28 @@ pub(crate) fn read_aloud(
         .map_err(|error: UnknownMood| error.to_string())?;
     let voice_choice = VoiceChoice::parse(request.voice.as_deref(), request.speaker.as_deref());
     let service = voice.read_aloud();
+    let from = request.from_sentence.unwrap_or(0);
+    let speed = request.speed.unwrap_or(NORMAL_SPEED);
     let ticket = service
         .begin(mood, voice_choice)
+        .map(|ticket| ticket.starting_at(from).at_tempo(speed))
         .map_err(|error| error.to_string())?;
     let reading = announce_reading(&app, mood);
     thread::spawn(move || {
-        if let Some(result) = service.finish(ticket) {
-            report_if_latest(&app, reading, result);
+        let report = |timing| report_sentence(&app, reading, timing);
+        if let Some(result) = service.finish(ticket, report) {
+            publish_if_latest(&app, reading, result);
         }
     });
     Ok(())
+}
+
+fn report_sentence<R: Runtime>(app: &AppHandle<R>, reading: u64, timing: SentenceTiming) {
+    app.state::<ReadAloud>()
+        .readings
+        .report_if_latest(reading, || {
+            emit(app, SENTENCE_EVENT, SentencePlayback::new(reading, timing));
+        });
 }
 
 fn announce_reading<R: Runtime>(app: &AppHandle<R>, mood: Mood) -> u64 {
@@ -177,26 +249,15 @@ fn announce_reading<R: Runtime>(app: &AppHandle<R>, mood: Mood) -> u64 {
     })
 }
 
-fn report_if_latest<R: Runtime>(
-    app: &AppHandle<R>,
-    reading: u64,
-    result: Result<ReadOutcome, ReadAloudError>,
-) {
-    if publish_if_latest(app, reading, result) {
-        hide_popup(app);
-    }
-}
-
-/// Publishes how `reading` ended unless a newer one has started. True when it finished.
+/// Publishes how `reading` ended unless a newer one has started.
 fn publish_if_latest<R: Runtime>(
     app: &AppHandle<R>,
     reading: u64,
     result: Result<ReadOutcome, ReadAloudError>,
-) -> bool {
+) {
     app.state::<ReadAloud>()
         .readings
-        .report_if_latest(reading, || publish_outcome(app, result))
-        .unwrap_or(false)
+        .report_if_latest(reading, || publish_outcome(app, result));
 }
 
 /// Reloads the read-aloud window so it lists the voices of the voice server now in use.
@@ -206,15 +267,9 @@ pub(crate) fn refresh_voices<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-fn publish_outcome<R: Runtime>(
-    app: &AppHandle<R>,
-    result: Result<ReadOutcome, ReadAloudError>,
-) -> bool {
+fn publish_outcome<R: Runtime>(app: &AppHandle<R>, result: Result<ReadOutcome, ReadAloudError>) {
     app.state::<Overlay>().handle(OverlayEvent::SpeakingEnded);
-    let status = StatusPayload::from(result);
-    let finished = matches!(status, StatusPayload::Finished);
-    emit(app, STATUS_EVENT, status);
-    finished
+    emit(app, STATUS_EVENT, StatusPayload::from(result));
 }
 
 fn remember<R: Runtime>(app: &AppHandle<R>, payload: SelectionPayload) {
@@ -269,18 +324,6 @@ pub(crate) fn dismiss_read_aloud(app: AppHandle) {
     hide_popup(&app);
 }
 
-pub(crate) fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
-    if window.label() == POPUP {
-        hide_when_blurred(window, event);
-    }
-}
-
-fn hide_when_blurred<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
-    if matches!(event, WindowEvent::Focused(false)) {
-        log_failure(window.hide(), "hide the read-aloud window");
-    }
-}
-
 fn emit<R: Runtime>(app: &AppHandle<R>, event: &str, payload: impl Serialize + Clone) {
     log_failure(
         app.emit_to(POPUP, event, payload),
@@ -302,17 +345,15 @@ fn hide_popup<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
+/// Centres the reader, at its logical size, on the monitor under the cursor, then shows and
+/// focuses it.
 fn place_and_show<R: Runtime>(app: &AppHandle<R>, window: &WebviewWindow<R>) -> tauri::Result<()> {
     let cursor = app.cursor_position()?;
     if let Some(monitor) = app.monitor_from_point(cursor.x, cursor.y)? {
-        let size = window.outer_size()?;
+        let size: PhysicalSize<u32> =
+            LogicalSize::new(READER_WIDTH, READER_HEIGHT).to_physical(monitor.scale_factor());
         let area = monitor.work_area();
-        let cursor = cursor.cast::<i32>();
-        let origin = popup_origin(
-            Point {
-                x: cursor.x,
-                y: cursor.y,
-            },
+        let origin = centred_origin(
             Size {
                 width: size.width,
                 height: size.height,
@@ -329,6 +370,7 @@ fn place_and_show<R: Runtime>(app: &AppHandle<R>, window: &WebviewWindow<R>) -> 
             },
         );
         window.set_position(PhysicalPosition::new(origin.x, origin.y))?;
+        window.set_size(size)?;
     }
     window.show()?;
     window.set_focus()

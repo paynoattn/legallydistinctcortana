@@ -49,6 +49,28 @@ async function waitForApp(page: Page, errors: readonly string[], heading = 'Task
   }
 }
 
+const CLOCK_START = new Date('2026-11-20T09:00:00Z');
+const CLOCK_PAUSED = new Date('2026-11-20T10:00:00Z');
+
+export interface ReaderSetup {
+  readonly storage?: Readonly<Record<string, string>>;
+  readonly reducedMotion?: boolean;
+}
+
+function recordReader(storage: Readonly<Record<string, string>>): void {
+  if (window.sessionStorage.getItem('acceptance.seeded') === null) {
+    window.sessionStorage.setItem('acceptance.seeded', 'yes');
+    for (const [key, value] of Object.entries(storage)) {
+      window.localStorage.setItem(key, value);
+    }
+  }
+  const log: unknown[] = [];
+  Reflect.set(window, 'fakeIpcLog', log);
+  window.addEventListener('fake-ipc:invoked', (event) => {
+    log.push(event instanceof CustomEvent ? event.detail : null);
+  });
+}
+
 export class TasksWorld extends World {
   readonly errors: string[] = [];
   #page: Page | undefined;
@@ -68,13 +90,18 @@ export class TasksWorld extends World {
     await waitForApp(this.#page, this.errors);
   }
 
-  async openReadAloud(selection: string): Promise<void> {
-    const context = await startedBrowser().newContext();
+  async openReadAloud(selection: string, setup: ReaderSetup = {}): Promise<void> {
+    const context = await startedBrowser().newContext({
+      reducedMotion: setup.reducedMotion === true ? 'reduce' : 'no-preference',
+    });
+    await context.addInitScript(recordReader, setup.storage ?? {});
     this.#page = await context.newPage();
     recordBrowserErrors(this.#page, this.errors);
+    await this.#page.clock.install({ time: CLOCK_START });
     const query = new URLSearchParams({ view: 'read-aloud', selection });
     await this.#page.goto(`${baseUrl}?${query.toString()}`);
     await waitForApp(this.#page, this.errors, 'Read aloud');
+    await this.#page.clock.pauseAt(CLOCK_PAUSED);
   }
 
   async openView(view: string, ready: (page: Page) => Promise<void>): Promise<void> {
@@ -98,6 +125,15 @@ export class TasksWorld extends World {
   async close(): Promise<void> {
     await this.#page?.context().close();
   }
+}
+
+export async function emit(world: TasksWorld, event: string, payload: unknown): Promise<void> {
+  await world.page().evaluate(
+    ({ name, detail }) => {
+      window.dispatchEvent(new CustomEvent(`fake-ipc:${name}`, { detail }));
+    },
+    { name: event, detail: payload },
+  );
 }
 
 export async function eventually(assertion: () => Promise<void>): Promise<void> {

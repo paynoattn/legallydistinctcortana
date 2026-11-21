@@ -1,10 +1,11 @@
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
 use kernel::Mood;
 use platform_ports::{SelectionError, SelectionReader};
-use speech_domain::{AudioClip, Prosody, ReadingText, TextError, Voice, VoiceChoice};
+use speech_domain::{AudioClip, Prosody, ReadingText, Sentence, TextError, Voice, VoiceChoice};
 use thiserror::Error;
 
 use crate::CancelFlag;
@@ -45,22 +46,26 @@ impl From<SelectionError> for ReadAloudError {
     }
 }
 
-/// What the user sees of the captured selection while choosing a mood.
+/// What the user sees of the captured selection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SelectionPreview {
     /// The first [`PREVIEW_CHARS`] characters, whitespace collapsed.
     pub text: String,
     /// Length of the whole selection in characters.
     pub char_count: usize,
+    /// The whole selection, split the way the voice reads it.
+    pub sentences: Vec<Sentence>,
 }
 
-/// What pressing the read-aloud shortcut did.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ShortcutOutcome {
-    /// A reading was in progress and has been stopped.
-    Stopped,
-    /// Nothing was being read, so the selection was captured (or why it could not be).
-    Captured(Result<SelectionPreview, ReadAloudError>),
+/// When a sentence just queued on the speakers will be heard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SentenceTiming {
+    /// Position of the sentence in the captured text, from 0.
+    pub index: usize,
+    /// How long until it starts playing: the audio queued ahead of it.
+    pub starts_in: Duration,
+    /// How long its speech lasts, without the pause the mood adds after it.
+    pub speech: Duration,
 }
 
 /// How a reading ended without an error.
@@ -118,6 +123,7 @@ impl ReadAloudService {
         let preview = SelectionPreview {
             text: text.preview(PREVIEW_CHARS),
             char_count: text.char_count(),
+            sentences: text.split(),
         };
         *lock(&self.captured) = Some(text);
         Ok(preview)
@@ -146,13 +152,14 @@ impl ReadAloudService {
         voice: Option<VoiceChoice>,
     ) -> Result<ReadOutcome, ReadAloudError> {
         let ticket = self.begin(mood, voice)?;
-        self.finish(ticket).unwrap_or(Ok(ReadOutcome::Stopped))
+        self.finish(ticket, |_| ())
+            .unwrap_or(Ok(ReadOutcome::Stopped))
     }
 
     /// Starts reading the captured text in `mood` with `voice` (`None` is the synthesizer's
-    /// default): stops any reading in progress and makes
-    /// this one current, so a [`Self::stop`] from now on ends it. Play it with
-    /// [`Self::finish`], typically on another thread.
+    /// default), from the first sentence unless [`ReadingTicket::starting_at`] says otherwise:
+    /// stops any reading in progress and makes this one current, so a [`Self::stop`] from now
+    /// on ends it. Play it with [`Self::finish`], typically on another thread.
     ///
     /// # Errors
     ///
@@ -172,27 +179,24 @@ impl ReadAloudService {
                 text,
                 prosody: Prosody::for_mood(mood),
                 voice,
+                from: 0,
                 cancel: session.cancel,
             },
         })
     }
 
-    /// Plays a reading started with [`Self::begin`] until it ends or is stopped. Returns
-    /// `None` when a newer reading replaced it, because its outcome no longer matters to
-    /// anyone; otherwise the outcome, with the speakers silenced on error.
-    pub fn finish(&self, ticket: ReadingTicket) -> Option<Result<ReadOutcome, ReadAloudError>> {
+    /// Plays a reading started with [`Self::begin`] until it ends or is stopped, calling
+    /// `report` as each sentence is queued. A reading that was stopped or replaced reports
+    /// nothing more. Returns `None` when a newer reading replaced it, because its outcome no
+    /// longer matters to anyone; otherwise the outcome, with the speakers silenced on error.
+    pub fn finish(
+        &self,
+        ticket: ReadingTicket,
+        report: impl Fn(SentenceTiming),
+    ) -> Option<Result<ReadOutcome, ReadAloudError>> {
         let ReadingTicket { reading, _active } = ticket;
-        let outcome = self.speak(&reading);
+        let outcome = self.speak(&reading, &report);
         self.settle(outcome, &reading.cancel)
-    }
-
-    /// The shortcut's behavior: stop the reading in progress, otherwise capture the selection.
-    pub fn toggle(&self) -> ShortcutOutcome {
-        if self.is_reading() {
-            self.stop();
-            return ShortcutOutcome::Stopped;
-        }
-        ShortcutOutcome::Captured(self.capture_selection())
     }
 
     /// Stops the current reading, if any, and silences the speakers.
@@ -236,14 +240,25 @@ impl ReadAloudService {
         Some(outcome)
     }
 
-    fn speak(&self, reading: &Reading) -> Result<ReadOutcome, ReadAloudError> {
+    fn speak(
+        &self,
+        reading: &Reading,
+        report: &dyn Fn(SentenceTiming),
+    ) -> Result<ReadOutcome, ReadAloudError> {
         let cancel = &reading.cancel;
-        for sentence in reading.text.sentences() {
-            let Some(clip) = self.synthesize_unless_cancelled(&sentence, reading)? else {
-                return Ok(ReadOutcome::Stopped);
+        let sentences = reading.text.sentences().into_iter().enumerate();
+        let mut spoken = false;
+        for (index, sentence) in sentences.skip(reading.from) {
+            let step = Step {
+                reading,
+                index,
+                sentence: &sentence,
+                spoken,
             };
-            if !self.enqueue_unless_cancelled(reading.prosody.apply(&clip), cancel)? {
-                return Ok(ReadOutcome::Stopped);
+            match self.speak_one(&step, report)? {
+                Voiced::Clip(()) => spoken = true,
+                Voiced::Skip => {}
+                Voiced::Stop => return Ok(ReadOutcome::Stopped),
             }
         }
         self.output.wait_until_idle(cancel);
@@ -252,6 +267,46 @@ impl ReadAloudService {
         } else {
             ReadOutcome::Finished
         })
+    }
+
+    /// Synthesizes and queues one sentence: `Clip` once it is queued, `Skip` when there is
+    /// nothing to play, `Stop` when the reading was stopped.
+    fn speak_one(
+        &self,
+        step: &Step<'_>,
+        report: &dyn Fn(SentenceTiming),
+    ) -> Result<Voiced<()>, ReadAloudError> {
+        let clip = match self.voiced(step)? {
+            Voiced::Clip(clip) => clip,
+            Voiced::Skip => return Ok(Voiced::Skip),
+            Voiced::Stop => return Ok(Voiced::Stop),
+        };
+        let queued = Queued {
+            reading: step.reading,
+            index: step.index,
+            speech: step.reading.prosody.voice(&clip),
+        };
+        Ok(if self.enqueue_unless_cancelled(queued, report)? {
+            Voiced::Clip(())
+        } else {
+            Voiced::Stop
+        })
+    }
+
+    /// The sentence's audio, or why there is none. Sentences with nothing to say are not
+    /// sent. A sentence the server refuses is skipped once the reading has been heard, so
+    /// one odd line (a Markdown table rule) does not end it; before that the refusal is an
+    /// error, since every sentence would likely fail the same way.
+    fn voiced(&self, step: &Step<'_>) -> Result<Voiced<AudioClip>, SynthesisError> {
+        if !ReadingText::is_speakable(step.sentence) {
+            return Ok(Voiced::Skip);
+        }
+        match self.synthesize_unless_cancelled(step.sentence, step.reading) {
+            Ok(Some(clip)) => Ok(Voiced::Clip(clip)),
+            Ok(None) => Ok(Voiced::Stop),
+            Err(SynthesisError::Server(_)) if step.spoken => Ok(Voiced::Skip),
+            Err(error) => Err(error),
+        }
     }
 
     fn synthesize_unless_cancelled(
@@ -272,16 +327,31 @@ impl ReadAloudService {
             .map(Some)
     }
 
+    /// Queues the sentence and reports when it will play, under the session lock so a
+    /// reading stopped or replaced meanwhile neither plays nor reports it.
     fn enqueue_unless_cancelled(
         &self,
-        clip: AudioClip,
-        cancel: &CancelFlag,
+        queued: Queued<'_>,
+        report: &dyn Fn(SentenceTiming),
     ) -> Result<bool, PlaybackError> {
+        let Queued {
+            reading,
+            index,
+            speech,
+        } = queued;
         let _current = lock(&self.current);
-        if cancel.is_cancelled() {
+        if reading.cancel.is_cancelled() {
             return Ok(false);
         }
-        self.output.enqueue(clip)?;
+        let length = speech.duration();
+        let starts_in = self
+            .output
+            .enqueue(speech.with_trailing_silence(reading.prosody.pause_after()))?;
+        report(SentenceTiming {
+            index,
+            starts_in,
+            speech: length,
+        });
         Ok(true)
     }
 }
@@ -307,6 +377,24 @@ pub struct ReadingTicket {
     _active: ActiveSession,
 }
 
+impl ReadingTicket {
+    /// The same reading, started from sentence `from` (0 is the first). Sentences before it
+    /// are not synthesized.
+    #[must_use]
+    pub fn starting_at(mut self, from: usize) -> Self {
+        self.reading.from = from;
+        self
+    }
+
+    /// The same reading at `tempo_per_mille` (1000 = normal speed), pitch kept. See
+    /// [`Prosody::at_tempo`] for the limits.
+    #[must_use]
+    pub fn at_tempo(mut self, tempo_per_mille: u32) -> Self {
+        self.reading.prosody = self.reading.prosody.at_tempo(tempo_per_mille);
+        self
+    }
+}
+
 impl fmt::Debug for ReadingTicket {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ReadingTicket").finish_non_exhaustive()
@@ -317,7 +405,27 @@ struct Reading {
     text: ReadingText,
     prosody: Prosody,
     voice: Option<VoiceChoice>,
+    from: usize,
     cancel: CancelFlag,
+}
+
+enum Voiced<T> {
+    Clip(T),
+    Skip,
+    Stop,
+}
+
+struct Step<'a> {
+    reading: &'a Reading,
+    index: usize,
+    sentence: &'a str,
+    spoken: bool,
+}
+
+struct Queued<'a> {
+    reading: &'a Reading,
+    index: usize,
+    speech: AudioClip,
 }
 
 struct ActiveSession(Arc<AtomicBool>);
@@ -352,6 +460,7 @@ mod tests {
     struct FakeSynth {
         spoken: Mutex<Vec<String>>,
         fail_on: Option<&'static str>,
+        unreachable_on: Option<&'static str>,
         after_first: Mutex<Option<Hook>>,
         chosen: Mutex<Vec<(String, VoiceChoice)>>,
         offered: Vec<Voice>,
@@ -367,6 +476,12 @@ mod tests {
             }
             if self.fail_on == Some(sentence) {
                 return Err(SynthesisError::Server("voice missing".into()));
+            }
+            if self.unreachable_on == Some(sentence) {
+                return Err(SynthesisError::Unreachable {
+                    address: "voice-box:10200".into(),
+                    reason: "connection reset".into(),
+                });
             }
             Ok(AudioClip::from_samples(1_000, vec![0.1; 100]).unwrap())
         }
@@ -394,18 +509,22 @@ mod tests {
     #[derive(Default)]
     struct FakeOutput {
         queued: Mutex<Vec<usize>>,
+        ahead: Mutex<Duration>,
         stops: AtomicUsize,
         waits: AtomicUsize,
         broken: bool,
     }
 
     impl AudioOutput for FakeOutput {
-        fn enqueue(&self, clip: AudioClip) -> Result<(), PlaybackError> {
+        fn enqueue(&self, clip: AudioClip) -> Result<Duration, PlaybackError> {
             if self.broken {
                 return Err(PlaybackError("no device".into()));
             }
             lock(&self.queued).push(clip.samples().len());
-            Ok(())
+            let mut ahead = lock(&self.ahead);
+            let starts_in = *ahead;
+            *ahead += clip.duration();
+            Ok(starts_in)
         }
 
         fn wait_until_idle(&self, _cancel: &CancelFlag) {
@@ -447,7 +566,7 @@ mod tests {
     }
 
     #[test]
-    fn capture_returns_a_preview_and_the_length() {
+    fn capture_returns_a_preview_the_length_and_the_sentences() {
         let rig = rig(
             Ok("  Hello\n world  "),
             FakeSynth::default(),
@@ -457,7 +576,17 @@ mod tests {
             rig.service.capture_selection(),
             Ok(SelectionPreview {
                 text: "Hello world".into(),
-                char_count: 12
+                char_count: 12,
+                sentences: vec![
+                    Sentence {
+                        text: "Hello".into(),
+                        starts_paragraph: true
+                    },
+                    Sentence {
+                        text: "world".into(),
+                        starts_paragraph: true
+                    },
+                ],
             })
         );
     }
@@ -541,7 +670,7 @@ mod tests {
         let rig = rig(
             Ok("One. Two. Three."),
             FakeSynth {
-                fail_on: Some("Two."),
+                fail_on: Some("One."),
                 ..FakeSynth::default()
             },
             FakeOutput::default(),
@@ -553,11 +682,80 @@ mod tests {
                 "voice missing".into()
             )))
         );
-        assert_eq!(*lock(&rig.synth.spoken), ["One.", "Two."]);
+        assert_eq!(*lock(&rig.synth.spoken), ["One."]);
         assert_eq!(
             rig.output.stops.load(Ordering::SeqCst),
             2,
             "silenced once when the reading started and once on the failure"
+        );
+    }
+
+    #[test]
+    fn a_sentence_the_server_refuses_after_the_first_is_skipped() {
+        let rig = rig(
+            Ok("One. Two. Three."),
+            FakeSynth {
+                fail_on: Some("Two."),
+                ..FakeSynth::default()
+            },
+            FakeOutput::default(),
+        );
+        rig.service.capture_selection().unwrap();
+        let ticket = rig.service.begin(Mood::Neutral, None).unwrap();
+        let (outcome, reports) = reported(&rig.service, ticket);
+        assert_eq!(outcome, Some(Ok(ReadOutcome::Finished)));
+        assert_eq!(*lock(&rig.synth.spoken), ["One.", "Two.", "Three."]);
+        assert_eq!(
+            reports
+                .iter()
+                .map(|timing| timing.index)
+                .collect::<Vec<_>>(),
+            [0, 2],
+            "the refused sentence is not reported"
+        );
+    }
+
+    #[test]
+    fn losing_the_voice_server_mid_reading_still_fails() {
+        let rig = rig(
+            Ok("One. Two. Three."),
+            FakeSynth {
+                unreachable_on: Some("Two."),
+                ..FakeSynth::default()
+            },
+            FakeOutput::default(),
+        );
+        rig.service.capture_selection().unwrap();
+        assert!(
+            matches!(
+                rig.service.read_captured(Mood::Neutral, None),
+                Err(ReadAloudError::Synthesis(
+                    SynthesisError::Unreachable { .. }
+                ))
+            ),
+            "a network failure ends the reading"
+        );
+    }
+
+    #[test]
+    fn lines_with_nothing_to_say_are_not_sent_to_the_voice() {
+        let rig = reading(
+            "One.
+| --- | --- |
+Two.",
+        );
+        let (outcome, reports) = reported(
+            &rig.service,
+            rig.service.begin(Mood::Neutral, None).unwrap(),
+        );
+        assert_eq!(outcome, Some(Ok(ReadOutcome::Finished)));
+        assert_eq!(*lock(&rig.synth.spoken), ["One.", "Two."]);
+        assert_eq!(
+            reports
+                .iter()
+                .map(|timing| timing.index)
+                .collect::<Vec<_>>(),
+            [0, 2]
         );
     }
 
@@ -606,54 +804,6 @@ mod tests {
         let rig = reading("One.");
         rig.service.read_captured(Mood::Neutral, None).unwrap();
         assert_eq!(rig.output.stops.load(Ordering::SeqCst), 1);
-    }
-
-    #[test]
-    fn toggling_while_idle_captures_the_selection() {
-        let rig = rig(Ok("Hello."), FakeSynth::default(), FakeOutput::default());
-        assert_eq!(
-            rig.service.toggle(),
-            ShortcutOutcome::Captured(Ok(SelectionPreview {
-                text: "Hello.".into(),
-                char_count: 6
-            }))
-        );
-        assert_eq!(rig.output.stops.load(Ordering::SeqCst), 0);
-        assert_eq!(
-            rig.service.read_captured(Mood::Neutral, None),
-            Ok(ReadOutcome::Finished)
-        );
-    }
-
-    #[test]
-    fn toggling_reports_why_nothing_was_captured() {
-        let rig = rig(
-            Err(SelectionError::NothingSelected),
-            FakeSynth::default(),
-            FakeOutput::default(),
-        );
-        assert_eq!(
-            rig.service.toggle(),
-            ShortcutOutcome::Captured(Err(ReadAloudError::NothingSelected))
-        );
-    }
-
-    #[test]
-    fn toggling_while_reading_stops_instead_of_capturing() {
-        let rig = reading("One. Two. Three.");
-        let service = Arc::clone(&rig.service);
-        let toggled = Arc::new(Mutex::new(None));
-        let seen = Arc::clone(&toggled);
-        *lock(&rig.synth.after_first) = Some(Box::new(move || {
-            *lock(&seen) = Some(service.toggle());
-        }));
-        assert_eq!(
-            rig.service.read_captured(Mood::Neutral, None),
-            Ok(ReadOutcome::Stopped)
-        );
-        assert_eq!(*lock(&toggled), Some(ShortcutOutcome::Stopped));
-        assert_eq!(*lock(&rig.synth.spoken), ["One."]);
-        assert!(!rig.service.is_reading(), "not reading once toggled off");
     }
 
     struct FailFirst {
@@ -869,7 +1019,10 @@ mod tests {
         assert!(!rig.service.is_reading());
         let ticket = rig.service.begin(Mood::Neutral, None).unwrap();
         assert!(rig.service.is_reading(), "current as soon as it begins");
-        assert_eq!(rig.service.finish(ticket), Some(Ok(ReadOutcome::Finished)));
+        assert_eq!(
+            rig.service.finish(ticket, |_| ()),
+            Some(Ok(ReadOutcome::Finished))
+        );
         assert!(!rig.service.is_reading());
     }
 
@@ -879,7 +1032,7 @@ mod tests {
         let ticket = rig.service.begin(Mood::Neutral, None).unwrap();
         assert_eq!(rig.output.stops.load(Ordering::SeqCst), 1);
         assert!(lock(&rig.synth.spoken).is_empty(), "nothing is spoken yet");
-        rig.service.finish(ticket);
+        rig.service.finish(ticket, |_| ());
         assert_eq!(*lock(&rig.synth.spoken), ["One."]);
     }
 
@@ -896,7 +1049,10 @@ mod tests {
         let ticket = rig.service.begin(Mood::Neutral, None).unwrap();
         rig.service.stop();
         assert!(!rig.service.is_reading());
-        assert_eq!(rig.service.finish(ticket), Some(Ok(ReadOutcome::Stopped)));
+        assert_eq!(
+            rig.service.finish(ticket, |_| ()),
+            Some(Ok(ReadOutcome::Stopped))
+        );
         assert!(lock(&rig.synth.spoken).is_empty());
         assert!(lock(&rig.output.queued).is_empty());
     }
@@ -906,13 +1062,16 @@ mod tests {
         let rig = reading("One.");
         let old = rig.service.begin(Mood::Neutral, None).unwrap();
         let new = rig.service.begin(Mood::Neutral, None).unwrap();
-        assert_eq!(rig.service.finish(old), None);
+        assert_eq!(rig.service.finish(old, |_| ()), None);
         assert!(lock(&rig.synth.spoken).is_empty());
         assert!(
             rig.service.is_reading(),
             "the newer reading is still current"
         );
-        assert_eq!(rig.service.finish(new), Some(Ok(ReadOutcome::Finished)));
+        assert_eq!(
+            rig.service.finish(new, |_| ()),
+            Some(Ok(ReadOutcome::Finished))
+        );
         assert_eq!(*lock(&rig.synth.spoken), ["One."]);
     }
 
@@ -930,7 +1089,7 @@ mod tests {
         let old = rig.service.begin(Mood::Neutral, None).unwrap();
         let _new = rig.service.begin(Mood::Neutral, None).unwrap();
         let stops_before = rig.output.stops.load(Ordering::SeqCst);
-        assert_eq!(rig.service.finish(old), None);
+        assert_eq!(rig.service.finish(old, |_| ()), None);
         assert_eq!(rig.output.stops.load(Ordering::SeqCst), stops_before);
     }
 
@@ -947,12 +1106,129 @@ mod tests {
         rig.service.capture_selection().unwrap();
         let ticket = rig.service.begin(Mood::Neutral, None).unwrap();
         assert_eq!(
-            rig.service.finish(ticket),
+            rig.service.finish(ticket, |_| ()),
             Some(Err(ReadAloudError::Synthesis(SynthesisError::Server(
                 "voice missing".into()
             ))))
         );
         assert_eq!(rig.output.stops.load(Ordering::SeqCst), 2);
+    }
+
+    fn reported(
+        service: &ReadAloudService,
+        ticket: ReadingTicket,
+    ) -> (
+        Option<Result<ReadOutcome, ReadAloudError>>,
+        Vec<SentenceTiming>,
+    ) {
+        let reports = Mutex::new(Vec::new());
+        let outcome = service.finish(ticket, |timing| lock(&reports).push(timing));
+        (outcome, reports.into_inner().unwrap())
+    }
+
+    #[test]
+    fn a_reading_from_a_later_sentence_skips_the_ones_before_it() {
+        let rig = reading("One. Two. Three.");
+        let ticket = rig
+            .service
+            .begin(Mood::Neutral, None)
+            .unwrap()
+            .starting_at(1);
+        let (outcome, reports) = reported(&rig.service, ticket);
+        assert_eq!(outcome, Some(Ok(ReadOutcome::Finished)));
+        assert_eq!(*lock(&rig.synth.spoken), ["Two.", "Three."]);
+        assert_eq!(
+            reports
+                .iter()
+                .map(|timing| timing.index)
+                .collect::<Vec<_>>(),
+            [1, 2]
+        );
+    }
+
+    #[test]
+    fn a_reading_from_past_the_end_reads_nothing_and_finishes() {
+        let rig = reading("One.");
+        let ticket = rig
+            .service
+            .begin(Mood::Neutral, None)
+            .unwrap()
+            .starting_at(1);
+        let (outcome, reports) = reported(&rig.service, ticket);
+        assert_eq!(outcome, Some(Ok(ReadOutcome::Finished)));
+        assert!(lock(&rig.synth.spoken).is_empty());
+        assert_eq!(reports, []);
+    }
+
+    #[test]
+    fn each_report_says_when_its_sentence_starts_and_how_long_its_speech_lasts() {
+        let rig = reading("One. Two.");
+        *lock(&rig.output.ahead) = Duration::from_secs(2);
+        let ticket = rig.service.begin(Mood::Calm, None).unwrap();
+        let (_, reports) = reported(&rig.service, ticket);
+        let calm_speech = Duration::from_millis(108);
+        let calm_pause = Duration::from_millis(420);
+        assert_eq!(
+            reports,
+            [
+                SentenceTiming {
+                    index: 0,
+                    starts_in: Duration::from_secs(2),
+                    speech: calm_speech,
+                },
+                SentenceTiming {
+                    index: 1,
+                    starts_in: Duration::from_secs(2) + calm_speech + calm_pause,
+                    speech: calm_speech,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_faster_reading_shortens_each_sentence_and_its_pause() {
+        let rig = reading("One. Two.");
+        let ticket = rig
+            .service
+            .begin(Mood::Neutral, None)
+            .unwrap()
+            .at_tempo(2_000);
+        let (_, reports) = reported(&rig.service, ticket);
+        let speech = Duration::from_millis(50);
+        assert_eq!(
+            reports
+                .iter()
+                .map(|timing| (timing.starts_in, timing.speech))
+                .collect::<Vec<_>>(),
+            [
+                (Duration::ZERO, speech),
+                (speech + Duration::from_millis(125), speech),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_replaced_reading_reports_nothing() {
+        let slot: Slot<Arc<ReadAloudService>> = Arc::default();
+        let newer: Slot<Vec<SentenceTiming>> = Arc::default();
+        let seen = Arc::clone(&newer);
+        let synth = SucceedAfterHook {
+            hook: Mutex::new(Some(hook_into(&slot, move |service| {
+                let ticket = service.begin(Mood::Neutral, None).unwrap();
+                *lock(&seen) = Some(reported(service, ticket).1);
+            }))),
+        };
+        let service = service_with(Arc::new(synth), Arc::new(FakeOutput::default()));
+        *lock(&slot) = Some(Arc::clone(&service));
+        let ticket = service.begin(Mood::Neutral, None).unwrap();
+        let (outcome, reports) = reported(&service, ticket);
+        assert_eq!(outcome, None);
+        assert_eq!(reports, [], "the replaced reading reports nothing");
+        assert_eq!(
+            lock(&newer).as_ref().map(Vec::len),
+            Some(1),
+            "the newer reading still reports"
+        );
     }
 
     #[test]
@@ -978,9 +1254,9 @@ mod tests {
     }
 
     impl AudioOutput for LockProbe {
-        fn enqueue(&self, _clip: AudioClip) -> Result<(), PlaybackError> {
+        fn enqueue(&self, _clip: AudioClip) -> Result<Duration, PlaybackError> {
             self.observe("enqueue");
-            Ok(())
+            Ok(Duration::ZERO)
         }
 
         fn wait_until_idle(&self, _cancel: &CancelFlag) {}
@@ -1069,7 +1345,10 @@ mod tests {
             .service
             .begin(Mood::Neutral, Some(choice("amy", None)))
             .unwrap();
-        assert_eq!(rig.service.finish(ticket), Some(Ok(ReadOutcome::Finished)));
+        assert_eq!(
+            rig.service.finish(ticket, |_| ()),
+            Some(Ok(ReadOutcome::Finished))
+        );
         assert_eq!(
             *lock(&rig.synth.chosen),
             [("One.".to_owned(), choice("amy", None))]
@@ -1088,12 +1367,15 @@ mod tests {
             .service
             .begin(Mood::Neutral, Some(choice("thorsten", None)))
             .unwrap();
-        assert_eq!(rig.service.finish(old), None);
+        assert_eq!(rig.service.finish(old, |_| ()), None);
         assert!(
             lock(&rig.synth.chosen).is_empty(),
             "the replaced reading was cut short before synthesizing"
         );
-        assert_eq!(rig.service.finish(new), Some(Ok(ReadOutcome::Finished)));
+        assert_eq!(
+            rig.service.finish(new, |_| ()),
+            Some(Ok(ReadOutcome::Finished))
+        );
         assert_eq!(
             *lock(&rig.synth.chosen),
             [("One.".to_owned(), choice("thorsten", None))]
@@ -1109,8 +1391,11 @@ mod tests {
             .begin(Mood::Neutral, Some(choice("amy", None)))
             .unwrap();
         let new = rig.service.begin(Mood::Neutral, None).unwrap();
-        assert_eq!(rig.service.finish(new), Some(Ok(ReadOutcome::Finished)));
-        assert_eq!(rig.service.finish(old), None);
+        assert_eq!(
+            rig.service.finish(new, |_| ()),
+            Some(Ok(ReadOutcome::Finished))
+        );
+        assert_eq!(rig.service.finish(old, |_| ()), None);
         assert_eq!(*lock(&rig.synth.spoken), ["One."]);
         assert!(lock(&rig.synth.chosen).is_empty());
     }

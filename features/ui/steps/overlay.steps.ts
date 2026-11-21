@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { Given, Then, When } from '@cucumber/cucumber';
 import type { Locator, Page } from 'playwright';
-import { eventually, type TasksWorld } from './world.ts';
+import { emit, eventually, type TasksWorld } from './world.ts';
 
 const LOUD_GROWTH = 1.3;
 const notedCoreWidths = new WeakMap<TasksWorld, number>();
@@ -9,15 +9,6 @@ const invocations = new WeakMap<TasksWorld, Promise<string>>();
 
 function mark(world: TasksWorld): Locator {
   return world.page().locator('.lp');
-}
-
-async function emit(world: TasksWorld, event: string, payload: unknown): Promise<void> {
-  await world.page().evaluate(
-    ({ name, detail }) => {
-      window.dispatchEvent(new CustomEvent(`fake-ipc:${name}`, { detail }));
-    },
-    { name: event, detail: payload },
-  );
 }
 
 function sendState(world: TasksWorld, kind: string, reduceMotion: boolean): Promise<void> {
@@ -93,7 +84,10 @@ When('I note the size of the core', async function (this: TasksWorld) {
 });
 
 When('I click {string}', async function (this: TasksWorld, name: string) {
-  invocations.set(this, nextInvocation(this.page()));
+  invocations.set(
+    this,
+    nextInvocation(this.page()).catch(() => ''),
+  );
   await this.page().getByRole('button', { name, exact: true }).click();
 });
 

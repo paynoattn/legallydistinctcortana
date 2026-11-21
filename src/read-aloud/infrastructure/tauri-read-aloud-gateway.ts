@@ -2,15 +2,25 @@ import {
   anyOf,
   arrayOf,
   integerIn,
+  isBoolean,
   isString,
   objectOf,
   oneOf,
   type Check,
 } from '../../shared/checks.ts';
-import type { ReadAloudGateway } from '../application/ports.ts';
-import { isMoodId, type MoodId } from '../domain/mood.ts';
-import type { ReadingStatus, Selection } from '../domain/read-aloud-state.ts';
-import type { Voice, VoiceChoice } from '../domain/voice.ts';
+import type { ReadAloudGateway, ReadRequest } from '../application/ports.ts';
+import type { ReadingStatus, Selection, SentenceReport } from '../domain/read-aloud-state.ts';
+import type { Voice } from '../domain/voice.ts';
+import {
+  CURRENT_SELECTION_COMMAND,
+  DISMISS_COMMAND,
+  LIST_VOICES_COMMAND,
+  READ_COMMAND,
+  SELECTION_EVENT,
+  SENTENCE_EVENT,
+  STATUS_EVENT,
+  STOP_COMMAND,
+} from './read-aloud-ipc-names.ts';
 
 export type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 export type Listen = (
@@ -18,28 +28,30 @@ export type Listen = (
   handler: (event: { readonly payload: unknown }) => void,
 ) => Promise<unknown>;
 
-export const SELECTION_EVENT = 'read-aloud:selection';
-export const STATUS_EVENT = 'read-aloud:status';
-export const CURRENT_SELECTION_COMMAND = 'current_selection';
-export const LIST_VOICES_COMMAND = 'list_voices';
 export const UNEXPECTED_MESSAGE = 'The app sent an update this window does not understand.';
 
 const isFailure = objectOf({ kind: oneOf('failed'), message: isString });
 
+const isWholeNumber = integerIn(0, Number.MAX_SAFE_INTEGER);
+
 const isSelection: Check<Selection> = anyOf(
   objectOf({
     kind: oneOf('ready'),
-    preview: isString,
-    charCount: integerIn(0, Number.MAX_SAFE_INTEGER),
+    sentences: arrayOf(objectOf({ text: isString, startsParagraph: isBoolean })),
   }),
   isFailure,
 );
 
 const isStatus: Check<ReadingStatus> = anyOf(
-  objectOf({ kind: oneOf('reading'), mood: isMoodId }),
-  objectOf({ kind: oneOf('finished', 'stopped') }),
+  objectOf({ kind: oneOf('reading', 'finished', 'stopped') }),
   isFailure,
 );
+
+const isSentenceReport: Check<SentenceReport> = objectOf({
+  index: isWholeNumber,
+  startsInMs: isWholeNumber,
+  speechMs: isWholeNumber,
+});
 
 const isVoices = arrayOf(
   objectOf({
@@ -95,9 +107,23 @@ export class TauriReadAloudGateway implements ReadAloudGateway {
     });
   }
 
-  async read(mood: MoodId, voice: VoiceChoice | null): Promise<void> {
-    await this.#invoke('read_aloud', {
-      request: { mood, voice: voice?.name ?? null, speaker: voice?.speaker ?? null },
+  onSentence(listener: (report: SentenceReport) => void): void {
+    this.#listen(SENTENCE_EVENT, ({ payload }) => {
+      if (isSentenceReport(payload)) {
+        listener(payload);
+      }
+    }).catch(() => undefined);
+  }
+
+  async read({ mood, voice, fromSentence, speed }: ReadRequest): Promise<void> {
+    await this.#invoke(READ_COMMAND, {
+      request: {
+        mood,
+        voice: voice?.name ?? null,
+        speaker: voice?.speaker ?? null,
+        fromSentence,
+        speed,
+      },
     });
   }
 
@@ -110,11 +136,11 @@ export class TauriReadAloudGateway implements ReadAloudGateway {
   }
 
   async stop(): Promise<void> {
-    await this.#invoke('stop_reading');
+    await this.#invoke(STOP_COMMAND);
   }
 
   async dismiss(): Promise<void> {
-    await this.#invoke('dismiss_read_aloud');
+    await this.#invoke(DISMISS_COMMAND);
   }
 
   #subscribe<T>(

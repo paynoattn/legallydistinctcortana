@@ -10,5 +10,7 @@ mod placement;
 mod selection;
 
 pub use insertion::{InsertError, TextInserter};
-pub use placement::{POPUP_CURSOR_GAP, Point, Rect, Size, corner_origin, popup_origin};
+pub use placement::{
+    POPUP_CURSOR_GAP, Point, Rect, Size, centred_origin, corner_origin, popup_origin,
+};
 pub use selection::{SelectionError, SelectionReader};

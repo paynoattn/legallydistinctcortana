@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   choiceFor,
+  chosenVoiceLabel,
+  DEFAULT_VOICE_LABEL,
   isOffered,
   languageLabel,
   languageOfChoice,
@@ -234,5 +236,43 @@ describe('voiceOptions', () => {
 
   it('offers no speakers for a voice nobody offers', () => {
     expect(voiceOptions(VOICES, 'en_US', { name: 'gone', speaker: 'p1' }).speakers).toEqual([]);
+  });
+});
+
+describe('chosenVoiceLabel', () => {
+  const amy: Voice = {
+    name: 'en_US-amy-medium',
+    description: 'amy (medium)',
+    languages: ['en_US'],
+    speakers: [],
+  };
+
+  it('names the server default when no voice is chosen', () => {
+    expect(DEFAULT_VOICE_LABEL).toBe('Default voice');
+    expect(chosenVoiceLabel([amy], null)).toBe('Default voice');
+  });
+
+  it('names an offered voice by its label', () => {
+    expect(chosenVoiceLabel([amy], { name: 'en_US-amy-medium', speaker: null })).toBe(
+      'amy (medium)',
+    );
+  });
+
+  it('names the chosen voice among several', () => {
+    const thorsten: Voice = {
+      name: 'de_DE-thorsten-medium',
+      description: 'thorsten (medium)',
+      languages: ['de_DE'],
+      speakers: [],
+    };
+    expect(
+      chosenVoiceLabel([amy, thorsten], { name: 'de_DE-thorsten-medium', speaker: null }),
+    ).toBe('thorsten (medium)');
+  });
+
+  it('falls back to the voice name before the voices are known', () => {
+    expect(chosenVoiceLabel([], { name: 'en_US-amy-medium', speaker: null })).toBe(
+      'en_US-amy-medium',
+    );
   });
 });

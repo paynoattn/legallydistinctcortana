@@ -40,6 +40,10 @@ export function isMoodId(value: unknown): value is MoodId {
   return MOOD_ORDER.some((id) => id === value);
 }
 
+export function storedMood(stored: string | null): MoodId {
+  return isMoodId(stored) ? stored : 'neutral';
+}
+
 export function moodLabel(id: MoodId): string {
   return DETAILS[id].label;
 }

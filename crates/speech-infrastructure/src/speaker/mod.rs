@@ -14,6 +14,7 @@ use speech_domain::AudioClip;
 
 const IDLE_POLL: Duration = Duration::from_millis(15);
 const DRAIN_TAIL: Duration = Duration::from_millis(120);
+const MICROS_PER_SECOND: u64 = 1_000_000;
 
 type Queue = Arc<Mutex<VecDeque<f32>>>;
 type Broken = Arc<AtomicBool>;
@@ -70,16 +71,22 @@ impl SpeakerOutput {
 }
 
 impl AudioOutput for SpeakerOutput {
-    fn enqueue(&self, clip: AudioClip) -> Result<(), PlaybackError> {
+    fn enqueue(&self, clip: AudioClip) -> Result<Duration, PlaybackError> {
         let device = self.device()?;
-        lock(&self.queue).extend(clip.resampled(device.format.rate).into_samples());
+        let samples = clip.resampled(device.format.rate).into_samples();
+        let ahead = {
+            let mut queue = lock(&self.queue);
+            let ahead = queued_for(queue.len(), device.format.rate);
+            queue.extend(samples);
+            ahead
+        };
         if device.broken.load(Ordering::SeqCst) {
             lock(&self.queue).clear();
             return Err(PlaybackError(
                 "the speakers stopped working; try again to reopen them".into(),
             ));
         }
-        Ok(())
+        Ok(ahead)
     }
 
     fn wait_until_idle(&self, cancel: &CancelFlag) {
@@ -90,6 +97,12 @@ impl AudioOutput for SpeakerOutput {
     fn stop(&self) {
         lock(&self.queue).clear();
     }
+}
+
+/// How long `samples` mono samples last at `rate` samples a second, to the microsecond.
+fn queued_for(samples: usize, rate: u32) -> Duration {
+    let samples = u64::try_from(samples).unwrap_or(u64::MAX);
+    Duration::from_micros(samples.saturating_mul(MICROS_PER_SECOND) / u64::from(rate.max(1)))
 }
 
 fn wait_for_drain(queue: &Queue, cancel: &CancelFlag, poll: Duration) {
@@ -181,6 +194,21 @@ mod tests {
             ))
         );
         assert!(lock(&speaker.queue).is_empty(), "the audio was dropped");
+    }
+
+    #[test]
+    fn enqueue_reports_the_audio_already_queued_at_the_device_rate() {
+        let speaker = speaker_at(2_000);
+        let clip = AudioClip::from_samples(1_000, vec![0.1; 1_000]).unwrap();
+        assert_eq!(speaker.enqueue(clip.clone()), Ok(Duration::ZERO));
+        assert_eq!(speaker.enqueue(clip), Ok(Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn queued_audio_is_measured_to_the_microsecond() {
+        assert_eq!(queued_for(3, 2_000), Duration::from_micros(1_500));
+        assert_eq!(queued_for(44_100, 44_100), Duration::from_secs(1));
+        assert_eq!(queued_for(5, 0), Duration::from_secs(5));
     }
 
     #[test]

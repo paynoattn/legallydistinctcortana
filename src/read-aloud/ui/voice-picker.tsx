@@ -12,21 +12,20 @@ import { onEscape } from './escape-key.ts';
 interface VoicePickerProps {
   readonly store: VoiceStore;
   readonly onDismiss: () => void;
+  readonly onPicked: () => void;
 }
 
-interface LanguageSelectProps extends VoicePickerProps {
-  readonly languages: readonly string[];
-  readonly language: string;
+interface Option {
+  readonly value: string;
+  readonly label: string;
 }
 
-interface NameSelectProps extends VoicePickerProps {
-  readonly voices: readonly Voice[];
-  readonly name: string;
-}
-
-interface SpeakerSelectProps extends VoicePickerProps {
-  readonly speakers: readonly string[];
-  readonly speaker: string;
+interface ChoiceProps {
+  readonly label: string;
+  readonly value: string;
+  readonly options: readonly Option[];
+  readonly onChoose: (value: string) => void;
+  readonly onDismiss: () => void;
 }
 
 interface VoiceSelectsProps extends VoicePickerProps {
@@ -35,25 +34,20 @@ interface VoiceSelectsProps extends VoicePickerProps {
   readonly choice: VoiceChoice | null;
 }
 
-function LanguageSelect({
-  store,
-  onDismiss,
-  languages,
-  language,
-}: LanguageSelectProps): ReactElement {
+function Choice({ label, value, options, onChoose, onDismiss }: ChoiceProps): ReactElement {
   return (
     <label>
-      Language
+      {label}
       <select
-        value={language}
+        value={value}
         onChange={(event) => {
-          store.chooseLanguage(event.currentTarget.value);
+          onChoose(event.currentTarget.value);
         }}
         onKeyDown={onEscape(onDismiss)}
       >
-        {languages.map((code) => (
-          <option key={code} value={code}>
-            {languageLabel(code)}
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
           </option>
         ))}
       </select>
@@ -61,53 +55,35 @@ function LanguageSelect({
   );
 }
 
-function NameSelect({ store, onDismiss, voices, name }: NameSelectProps): ReactElement {
-  return (
-    <label>
-      Voice
-      <select
-        value={name}
-        onChange={(event) => {
-          store.chooseVoice(event.currentTarget.value);
-        }}
-        onKeyDown={onEscape(onDismiss)}
-      >
-        <option value="">Server default</option>
-        {voices.map((voice) => (
-          <option key={voice.name} value={voice.name}>
-            {voiceLabel(voice)}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
+function languageOptions(codes: readonly string[]): readonly Option[] {
+  return codes.map((code) => ({ value: code, label: languageLabel(code) }));
 }
 
-function SpeakerSelect({ store, onDismiss, speakers, speaker }: SpeakerSelectProps): ReactElement {
-  return (
-    <label>
-      Speaker
-      <select
-        value={speaker}
-        onChange={(event) => {
-          store.chooseSpeaker(event.currentTarget.value);
-        }}
-        onKeyDown={onEscape(onDismiss)}
-      >
-        <option value="">Default speaker</option>
-        {speakers.map((name) => (
-          <option key={name} value={name}>
-            {name}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
+function nameOptions(voices: readonly Voice[]): readonly Option[] {
+  return [
+    { value: '', label: 'Server default' },
+    ...voices.map((voice) => ({ value: voice.name, label: voiceLabel(voice) })),
+  ];
+}
+
+function speakerOptions(speakers: readonly string[]): readonly Option[] {
+  return [
+    { value: '', label: 'Default speaker' },
+    ...speakers.map((name) => ({ value: name, label: name })),
+  ];
+}
+
+function andThen(choose: (value: string) => void, after: () => void): (value: string) => void {
+  return (value) => {
+    choose(value);
+    after();
+  };
 }
 
 function VoiceSelects({
   store,
   onDismiss,
+  onPicked,
   voices,
   language,
   choice,
@@ -116,26 +92,34 @@ function VoiceSelects({
   return (
     <fieldset className="voice-picker">
       <legend>Voice</legend>
-      <LanguageSelect
-        store={store}
+      <Choice
+        label="Language"
+        value={options.language}
+        options={languageOptions(options.languages)}
+        onChoose={andThen(store.chooseLanguage, onPicked)}
         onDismiss={onDismiss}
-        languages={options.languages}
-        language={options.language}
       />
-      <NameSelect store={store} onDismiss={onDismiss} voices={options.voices} name={options.name} />
+      <Choice
+        label="Voice"
+        value={options.name}
+        options={nameOptions(options.voices)}
+        onChoose={andThen(store.chooseVoice, onPicked)}
+        onDismiss={onDismiss}
+      />
       {options.speakers.length > 0 ? (
-        <SpeakerSelect
-          store={store}
+        <Choice
+          label="Speaker"
+          value={options.speaker}
+          options={speakerOptions(options.speakers)}
+          onChoose={andThen(store.chooseSpeaker, onPicked)}
           onDismiss={onDismiss}
-          speakers={options.speakers}
-          speaker={options.speaker}
         />
       ) : null}
     </fieldset>
   );
 }
 
-export function VoicePicker({ store, onDismiss }: VoicePickerProps): ReactElement {
+export function VoicePicker({ store, onDismiss, onPicked }: VoicePickerProps): ReactElement {
   const { list, language, choice } = useSyncExternalStore(store.subscribe, store.getSnapshot);
   switch (list.kind) {
     case 'loading':
@@ -154,6 +138,7 @@ export function VoicePicker({ store, onDismiss }: VoicePickerProps): ReactElemen
         <VoiceSelects
           store={store}
           onDismiss={onDismiss}
+          onPicked={onPicked}
           voices={list.voices}
           language={language}
           choice={choice}

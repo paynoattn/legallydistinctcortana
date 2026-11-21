@@ -107,3 +107,13 @@ export function voiceOptions(
     ...selectedValues(language, choice),
   };
 }
+
+export const DEFAULT_VOICE_LABEL = 'Default voice';
+
+export function chosenVoiceLabel(voices: readonly Voice[], choice: VoiceChoice | null): string {
+  if (choice === null) {
+    return DEFAULT_VOICE_LABEL;
+  }
+  const voice = voices.find((candidate) => candidate.name === choice.name);
+  return voice === undefined ? choice.name : voiceLabel(voice);
+}

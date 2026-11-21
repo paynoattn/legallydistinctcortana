@@ -1,48 +1,53 @@
 import type { KeyboardEvent, ReactElement } from 'react';
 import { nextFocusIndex } from '../domain/menu-navigation.ts';
-import { MOODS, type MoodId, moodForKey } from '../domain/mood.ts';
+import { MOODS, type MoodId } from '../domain/mood.ts';
 import { focusOnMount } from './focus-on-mount.ts';
 
 interface MoodMenuProps {
+  readonly current: MoodId;
   readonly onChoose: (mood: MoodId) => void;
-  readonly onDismiss: () => void;
-}
-
-function hasModifier(event: KeyboardEvent<HTMLDivElement>): boolean {
-  return event.ctrlKey || event.altKey || event.metaKey;
+  readonly onClose: () => void;
 }
 
 function moveFocus(event: KeyboardEvent<HTMLDivElement>): void {
-  const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+  const items = [
+    ...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'),
+  ];
   const current = items.findIndex((item) => item === document.activeElement);
   const next = nextFocusIndex(event.key, current, items.length);
   if (next !== undefined) {
     event.preventDefault();
+    event.stopPropagation();
     items[next]?.focus();
   }
 }
 
-export function MoodMenu({ onChoose, onDismiss }: MoodMenuProps): ReactElement {
+export function MoodMenu({ current, onChoose, onClose }: MoodMenuProps): ReactElement {
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    const mood = hasModifier(event) ? undefined : moodForKey(event.key);
     if (event.key === 'Escape') {
-      onDismiss();
-    } else if (mood === undefined) {
-      moveFocus(event);
+      event.stopPropagation();
+      onClose();
     } else {
-      onChoose(mood.id);
+      moveFocus(event);
     }
   };
   return (
-    <div role="menu" aria-label="Read in a mood" tabIndex={-1} onKeyDown={handleKeyDown}>
+    <div
+      className="mood-menu"
+      role="menu"
+      aria-label="Mood"
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
+    >
       {MOODS.map((mood, index) => (
         <button
           key={mood.id}
           type="button"
-          role="menuitem"
-          tabIndex={index === 0 ? 0 : -1}
+          role="menuitemradio"
+          aria-checked={mood.id === current}
+          tabIndex={mood.id === current ? 0 : -1}
           aria-keyshortcuts={String(index + 1)}
-          ref={index === 0 ? focusOnMount : undefined}
+          ref={mood.id === current ? focusOnMount : undefined}
           onClick={() => {
             onChoose(mood.id);
           }}

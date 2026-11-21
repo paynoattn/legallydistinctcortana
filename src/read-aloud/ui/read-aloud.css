@@ -1,146 +1,423 @@
-.read-aloud {
+.reader {
   --dusk: #1f2347;
-  --dusk-raised: #2a2f5c;
+  --dusk-deep: #191c3b;
+  --dusk-raise: #272b55;
+  --dusk-line: rgb(200 203 227 / 0.16);
   --glow: #ffb81c;
   --paper: #fff1c7;
   --mist: #c8cbe3;
+  --mist-dim: #a3a8d0;
+  --read: #9095c2;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
 
   box-sizing: border-box;
-  min-height: 100vh;
+  display: grid;
+  grid-template-rows: 48px 1fr auto;
+  height: 100vh;
   margin: 0;
-  padding: 0.9rem 0.9rem 1rem;
   max-width: none;
+  overflow: hidden;
   color: var(--paper);
   background: var(--dusk);
-  font-family: system-ui, sans-serif;
-  font-size: 0.875rem;
+  font-family:
+    'Atkinson Hyperlegible Next', 'Atkinson Hyperlegible', 'Segoe UI Variable Text', 'Segoe UI',
+    system-ui, sans-serif;
 }
 
-.read-aloud h1 {
-  margin: 0 0 0.5rem;
-  font-size: 0.8rem;
+body:has(.reader) {
+  margin: 0;
+  background: #1f2347;
+}
+
+.reader button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+}
+
+.reader button:focus-visible {
+  outline: 3px solid var(--glow);
+  outline-offset: 1px;
+}
+
+.reader-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-left: 18px;
+}
+
+.reader-title h1 {
+  margin: 0;
+  font-size: 15px;
   font-weight: 600;
   color: var(--mist);
 }
 
-.read-aloud figure {
-  margin: 0 0 0.75rem;
+.reader-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    #ffb81c 0 7px,
+    rgb(255 184 28 / 0.18) 7.5px 13px,
+    transparent 13.5px
+  );
 }
 
-.read-aloud blockquote {
-  margin: 0;
-  max-height: 4.6em;
+.reader-close {
+  align-self: stretch;
+  width: 46px;
+  margin-left: auto;
+  color: var(--mist);
+  display: grid;
+  place-items: center;
+}
+
+.reader-close:hover {
+  color: #fff;
+  background: #c42b1c;
+}
+
+.reader-close::before {
+  content: '✕';
+  font-size: 13px;
+}
+
+.reader-message {
+  padding: 24px;
+  font-size: 17px;
+}
+
+.reader-message [role='alert'] {
+  color: var(--glow);
+}
+
+.reader-body {
+  position: relative;
   overflow: hidden;
-  line-height: 1.4;
 }
 
-.read-aloud figcaption {
-  margin-top: 0.25rem;
-  font-size: 0.75rem;
-  color: var(--mist);
+.reader-scroller {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(200 203 227 / 0.25) transparent;
+  mask-image: linear-gradient(transparent 0, #000 64px, #000 calc(100% - 64px), transparent 100%);
 }
 
-.read-aloud [role='menu'] {
-  display: grid;
-  gap: 0.125rem;
+.reader-text {
+  position: relative;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 150px 24px 320px;
+  line-height: 1.7;
 }
 
-.read-aloud button {
-  font: inherit;
-  color: inherit;
+.reader-text p {
+  margin: 0 0 1.1em;
+}
+
+.sentence {
+  color: var(--mist-dim);
+}
+
+.sentence[data-state='read'] {
+  color: var(--read);
+}
+
+.sentence[data-state='now'] {
+  color: var(--paper);
+}
+
+.word {
+  position: relative;
+  z-index: 1;
   cursor: pointer;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
 }
 
-.read-aloud [role='menuitem'] {
+.word:hover {
+  text-decoration: underline;
+  text-decoration-color: rgb(255 241 199 / 0.35);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.24em;
+}
+
+.word.is-lit {
+  color: var(--dusk);
+  text-decoration: none;
+}
+
+.reader-light {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 7px;
+  background: var(--glow);
+  box-shadow: 0 0 22px 3px rgb(255 184 28 / 0.32);
+}
+
+.reader-light.is-off {
+  opacity: 0;
+}
+
+.reader-follow {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  font-weight: 600;
+  font-size: 15px;
+  background: var(--dusk) !important;
+  box-shadow:
+    0 0 0 1.5px var(--glow),
+    0 8px 20px rgb(0 0 0 / 0.3);
+}
+
+.reader-follow svg {
+  width: 16px;
+  height: 16px;
+}
+
+.reader-bar {
+  position: relative;
   display: grid;
-  grid-template-columns: 1.5rem 5rem 1fr;
+  gap: 10px;
+  padding: 12px 16px 14px;
+  border-top: 1px solid var(--dusk-line);
+}
+
+.reader-progress {
+  position: absolute;
+  top: -1px;
+  right: 0;
+  left: 0;
+  height: 3px;
+}
+
+.reader-progress i {
+  display: block;
+  height: 100%;
+  background: var(--glow);
+}
+
+.reader-progress.is-done i {
+  background: var(--mist-dim);
+}
+
+.reader-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.reader-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-sizing: border-box;
+  height: 40px;
+  min-width: 40px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.reader-button:hover {
+  background: var(--dusk-raise);
+}
+
+.reader-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.reader .reader-play {
+  width: 48px;
+  height: 48px;
+  margin: 0 2px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--dusk);
+  background: var(--paper);
+}
+
+.reader .reader-play:hover {
+  background: #fff;
+}
+
+.voice-button {
+  font-weight: 400;
+  color: var(--mist-dim);
+}
+
+.reader-separator {
+  width: 1px;
+  height: 24px;
+  margin: 0 8px;
+  background: var(--dusk-line);
+}
+
+.mood-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--glow);
+}
+
+.reader-anchor {
+  position: relative;
+}
+
+.mood-menu,
+.reader-popover {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  z-index: 5;
+  padding: 6px;
+  border: 1px solid var(--dusk-line);
+  border-radius: 12px;
+  background: var(--dusk-deep);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.4);
+}
+
+.mood-menu {
+  display: grid;
+  width: 260px;
+}
+
+.mood-menu [role='menuitemradio'] {
+  display: grid;
+  grid-template-columns: 1.25rem 5rem 1fr;
   align-items: baseline;
-  padding: 0.3rem 0.5rem;
+  padding: 6px 10px;
+  border-radius: 8px;
   text-align: left;
+  font-size: 15px;
 }
 
-.read-aloud [role='menuitem']:hover,
-.read-aloud [role='menuitem']:focus-visible {
-  background: var(--dusk-raised);
+.mood-menu [role='menuitemradio']:hover,
+.mood-menu [role='menuitemradio']:focus-visible {
+  background: var(--dusk-raise);
 }
 
-.read-aloud button:focus-visible {
-  outline: 2px solid var(--glow);
-  outline-offset: 1px;
+.mood-menu [aria-checked='true'] .mood-label {
+  color: var(--glow);
 }
 
-.read-aloud kbd {
+.mood-menu kbd {
   font: inherit;
-  color: var(--glow);
+  color: var(--mist-dim);
 }
 
-.read-aloud .mood-hint {
-  font-size: 0.75rem;
+.mood-hint {
+  font-size: 13px;
+  color: var(--mist-dim);
+}
+
+.reader-popover {
+  width: 320px;
+}
+
+.reader-status {
+  margin: 0 0 0 auto;
+  padding-right: 4px;
+  font-size: 15px;
+  text-align: right;
   color: var(--mist);
 }
 
-.read-aloud > p > button,
-.read-aloud > [role='status'] > button,
-.read-aloud > button {
-  padding: 0.25rem 0.75rem;
-  border-color: var(--mist);
+.reader-hint {
+  margin: 0 4px;
+  overflow: hidden;
+  font-size: 14px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--mist-dim);
 }
 
-.read-aloud [role='alert'] {
-  color: var(--glow);
+.reader-hint kbd {
+  padding: 0 6px;
+  border: 1px solid rgb(200 203 227 / 0.28);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  font: inherit;
+  color: var(--mist);
 }
 
-.read-aloud > [role='status'],
-.read-aloud > [role='alert'] {
-  margin: 0 0 0.6rem;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .read-aloud [role='menuitem'] {
-    transition: background-color 80ms ease-out;
-  }
-}
-
-.read-aloud .voice-picker {
-  margin: 0.75rem 0 0;
-  padding: 0.5rem 0 0;
+.voice-picker {
+  margin: 0;
+  padding: 4px 6px;
   border: 0;
-  border-top: 1px solid var(--dusk-raised);
-  font-size: 0.8rem;
+  font-size: 14px;
   color: var(--mist);
 }
 
-.read-aloud .voice-picker legend {
+.voice-picker legend {
   padding: 0;
   font-weight: 600;
 }
 
-.read-aloud .voice-picker label {
+.voice-picker label {
   display: grid;
-  grid-template-columns: 4.5rem 1fr;
+  grid-template-columns: 5rem 1fr;
   align-items: center;
-  margin-top: 0.35rem;
+  margin-top: 6px;
 }
 
-.read-aloud select {
+.reader select {
   min-width: 0;
-  padding: 0.2rem 0.3rem;
+  padding: 4px 6px;
   font: inherit;
   color: var(--paper);
   border: 1px solid var(--mist);
   border-radius: 6px;
-  background: var(--dusk-raised);
+  background: var(--dusk-raise);
 }
 
-.read-aloud select:focus-visible {
-  outline: 2px solid var(--glow);
+.reader select:focus-visible {
+  outline: 3px solid var(--glow);
   outline-offset: 1px;
 }
 
-body:has(.read-aloud) {
-  margin: 0;
-  background: #1f2347;
+@media (prefers-reduced-motion: no-preference) {
+  .reader-scroller {
+    scroll-behavior: smooth;
+  }
+
+  .sentence {
+    transition: color 600ms var(--ease-out);
+  }
+
+  .sentence[data-state='now'] {
+    transition-duration: 200ms;
+  }
+
+  .reader-light {
+    transition:
+      transform 130ms var(--ease-out),
+      width 130ms var(--ease-out),
+      opacity 240ms var(--ease-out);
+  }
+
+  .reader-light[data-jump] {
+    transition: opacity 240ms var(--ease-out);
+  }
 }

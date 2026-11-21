@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  LIST_VOICES_COMMAND,
-  TauriReadAloudGateway,
-  UNEXPECTED_MESSAGE,
-} from './tauri-read-aloud-gateway.ts';
+import { LIST_VOICES_COMMAND } from './read-aloud-ipc-names.ts';
+import { TauriReadAloudGateway, UNEXPECTED_MESSAGE } from './tauri-read-aloud-gateway.ts';
 
 const AMY = {
   name: 'en_US-amy-medium',

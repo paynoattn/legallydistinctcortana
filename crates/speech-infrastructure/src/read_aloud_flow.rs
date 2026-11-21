@@ -8,7 +8,9 @@ use kernel::Mood;
 use platform_ports::{SelectionError, SelectionReader};
 use serde_json::{Map, Value, json};
 use speech_application::ports::{AudioOutput, PlaybackError, SynthesisError};
-use speech_application::{CancelFlag, ReadAloudError, ReadAloudService, ReadOutcome};
+use speech_application::{
+    CancelFlag, ReadAloudError, ReadAloudService, ReadOutcome, SentenceTiming,
+};
 use speech_domain::AudioClip;
 
 use crate::wyoming::codec::{Event, read_event, write_event};
@@ -25,15 +27,19 @@ impl SelectionReader for Selected {
 #[derive(Default)]
 struct Speakers {
     clips: Mutex<Vec<(u32, usize)>>,
+    queued: Mutex<Duration>,
 }
 
 impl AudioOutput for Speakers {
-    fn enqueue(&self, clip: AudioClip) -> Result<(), PlaybackError> {
+    fn enqueue(&self, clip: AudioClip) -> Result<Duration, PlaybackError> {
         self.clips
             .lock()
             .unwrap()
             .push((clip.sample_rate(), clip.samples().len()));
-        Ok(())
+        let mut queued = self.queued.lock().unwrap();
+        let ahead = *queued;
+        *queued += clip.duration();
+        Ok(ahead)
     }
 
     fn wait_until_idle(&self, _cancel: &CancelFlag) {}
@@ -109,6 +115,45 @@ fn reads_a_selection_sentence_by_sentence_through_a_wyoming_server() {
     assert_eq!(
         *speakers.clips.lock().unwrap(),
         [(22_050, 2_004 + alert_pause), (22_050, 2_004 + alert_pause)]
+    );
+}
+
+#[test]
+fn a_reading_from_the_second_sentence_reports_when_each_one_plays() {
+    let (port, server) = piper(2);
+    let speakers = Arc::new(Speakers::default());
+    let service = service(
+        port,
+        "Good morning. Two emails need you. Lunch is at noon.",
+        &speakers,
+    );
+    service.capture_selection().unwrap();
+    let ticket = service.begin(Mood::Alert, None).unwrap().starting_at(1);
+    let reports = Mutex::new(Vec::new());
+    assert_eq!(
+        service.finish(ticket, |timing| reports.lock().unwrap().push(timing)),
+        Some(Ok(ReadOutcome::Finished))
+    );
+    assert_eq!(
+        server.join().unwrap(),
+        ["Two emails need you.", "Lunch is at noon."]
+    );
+    let speech = Duration::from_millis(90);
+    let pause = Duration::from_millis(160);
+    assert_eq!(
+        reports.into_inner().unwrap(),
+        [
+            SentenceTiming {
+                index: 1,
+                starts_in: Duration::ZERO,
+                speech,
+            },
+            SentenceTiming {
+                index: 2,
+                starts_in: speech + pause,
+                speech,
+            },
+        ]
     );
 }
 

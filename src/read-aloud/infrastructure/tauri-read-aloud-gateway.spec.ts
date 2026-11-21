@@ -1,103 +1,79 @@
 import { describe, expect, it } from 'vitest';
-import type { ReadingStatus, Selection } from '../domain/read-aloud-state.ts';
-import {
-  CURRENT_SELECTION_COMMAND,
-  SELECTION_EVENT,
-  STATUS_EVENT,
-  TauriReadAloudGateway,
-  UNEXPECTED_MESSAGE,
-} from './tauri-read-aloud-gateway.ts';
-
-type Handler = (event: { readonly payload: unknown }) => void;
-
-function settle<T>(value: T, failure: unknown): Promise<T> {
-  const { promise, reject, resolve } = Promise.withResolvers<T>();
-  if (failure === undefined) {
-    resolve(value);
-  } else {
-    reject(failure);
-  }
-  return promise;
-}
-
-class FakeTauri {
-  readonly invocations: { command: string; args: Record<string, unknown> | undefined }[] = [];
-  readonly handlers = new Map<string, Handler>();
-  invokeFailure: unknown = undefined;
-  listenFailure: unknown = undefined;
-  currentSelection: unknown = null;
-  currentSelectionFailure: unknown = undefined;
-  currentGate: PromiseWithResolvers<unknown> | undefined = undefined;
-  listenGate: PromiseWithResolvers<undefined> | undefined = undefined;
-
-  readonly invoke = (command: string, args?: Record<string, unknown>): Promise<unknown> => {
-    this.invocations.push({ command, args });
-    if (command === CURRENT_SELECTION_COMMAND) {
-      if (this.currentGate !== undefined) {
-        return this.currentGate.promise;
-      }
-      return settle(this.currentSelection, this.currentSelectionFailure);
-    }
-    return settle(null, this.invokeFailure);
-  };
-
-  readonly listen = (event: string, handler: Handler): Promise<unknown> => {
-    if (this.listenFailure !== undefined) {
-      return settle(null, this.listenFailure);
-    }
-    this.handlers.set(event, handler);
-    if (this.listenGate !== undefined) {
-      return this.listenGate.promise;
-    }
-    return Promise.resolve(() => undefined);
-  };
-
-  emit(event: string, payload: unknown): void {
-    const handler = this.handlers.get(event);
-    if (handler === undefined) {
-      throw new Error(`nobody listens to ${event}`);
-    }
-    handler({ payload });
-  }
-}
-
-function start(): { tauri: FakeTauri; gateway: TauriReadAloudGateway } {
-  const tauri = new FakeTauri();
-  return { tauri, gateway: new TauriReadAloudGateway(tauri.invoke, tauri.listen) };
-}
-
-const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+import type { Selection } from '../domain/read-aloud-state.ts';
+import { CURRENT_SELECTION_COMMAND, SELECTION_EVENT } from './read-aloud-ipc-names.ts';
+import { flush, start } from './tauri-read-aloud-gateway.fixture.ts';
 
 describe('TauriReadAloudGateway commands', () => {
-  it('invokes read_aloud with the mood and nulls when no voice is chosen', async () => {
+  it('invokes read_aloud with the mood, the first sentence, and nulls when no voice is chosen', async () => {
     const { tauri, gateway } = start();
-    await gateway.read('urgent', null);
+    await gateway.read({ mood: 'urgent', voice: null, fromSentence: 0, speed: 1000 });
     expect(tauri.invocations).toEqual([
       {
         command: 'read_aloud',
-        args: { request: { mood: 'urgent', voice: null, speaker: null } },
+        args: {
+          request: { mood: 'urgent', voice: null, speaker: null, fromSentence: 0, speed: 1000 },
+        },
+      },
+    ]);
+  });
+
+  it('invokes read_aloud from a later sentence at the chosen speed', async () => {
+    const { tauri, gateway } = start();
+    await gateway.read({ mood: 'calm', voice: null, fromSentence: 7, speed: 1500 });
+    expect(tauri.invocations).toEqual([
+      {
+        command: 'read_aloud',
+        args: {
+          request: { mood: 'calm', voice: null, speaker: null, fromSentence: 7, speed: 1500 },
+        },
       },
     ]);
   });
 
   it('invokes read_aloud with the chosen voice and speaker', async () => {
     const { tauri, gateway } = start();
-    await gateway.read('calm', { name: 'en_US-libritts-high', speaker: 'p239' });
+    await gateway.read({
+      mood: 'calm',
+      voice: { name: 'en_US-libritts-high', speaker: 'p239' },
+      fromSentence: 0,
+      speed: 1000,
+    });
     expect(tauri.invocations).toEqual([
       {
         command: 'read_aloud',
-        args: { request: { mood: 'calm', voice: 'en_US-libritts-high', speaker: 'p239' } },
+        args: {
+          request: {
+            mood: 'calm',
+            voice: 'en_US-libritts-high',
+            speaker: 'p239',
+            fromSentence: 0,
+            speed: 1000,
+          },
+        },
       },
     ]);
   });
 
   it('invokes read_aloud with a voice that has no speaker', async () => {
     const { tauri, gateway } = start();
-    await gateway.read('calm', { name: 'en_US-amy-medium', speaker: null });
+    await gateway.read({
+      mood: 'calm',
+      voice: { name: 'en_US-amy-medium', speaker: null },
+      fromSentence: 0,
+      speed: 1000,
+    });
     expect(tauri.invocations).toEqual([
       {
         command: 'read_aloud',
-        args: { request: { mood: 'calm', voice: 'en_US-amy-medium', speaker: null } },
+        args: {
+          request: {
+            mood: 'calm',
+            voice: 'en_US-amy-medium',
+            speaker: null,
+            fromSentence: 0,
+            speed: 1000,
+          },
+        },
       },
     ]);
   });
@@ -115,7 +91,9 @@ describe('TauriReadAloudGateway commands', () => {
   it('rejects read with the host error, even a plain string', async () => {
     const { tauri, gateway } = start();
     tauri.invokeFailure = 'no speaker';
-    await expect(gateway.read('calm', null)).rejects.toBe('no speaker');
+    await expect(
+      gateway.read({ mood: 'calm', voice: null, fromSentence: 0, speed: 1000 }),
+    ).rejects.toBe('no speaker');
   });
 
   it('rejects stop with the host error', async () => {
@@ -141,7 +119,7 @@ describe('TauriReadAloudGateway current selection', () => {
   });
 
   it.each<Selection>([
-    { kind: 'ready', preview: 'held', charCount: 4 },
+    { kind: 'ready', sentences: [{ text: 'held', startsParagraph: true }] },
     { kind: 'failed', message: 'nothing' },
   ])('delivers a valid held selection %j', async (held) => {
     const { tauri, gateway } = start();
@@ -152,20 +130,17 @@ describe('TauriReadAloudGateway current selection', () => {
     expect(seen).toEqual([held]);
   });
 
-  it.each<unknown>([
-    null,
-    undefined,
-    'ready',
-    { kind: 'ready', preview: 'x' },
-    { kind: 'waiting' },
-  ])('ignores the held selection %j when it is empty or invalid', async (held) => {
-    const { tauri, gateway } = start();
-    tauri.currentSelection = held;
-    const seen: Selection[] = [];
-    gateway.onSelection((selection) => seen.push(selection));
-    await flush();
-    expect(seen).toEqual([]);
-  });
+  it.each<unknown>([null, undefined, 'ready', { kind: 'ready' }, { kind: 'waiting' }])(
+    'ignores the held selection %j when it is empty or invalid',
+    async (held) => {
+      const { tauri, gateway } = start();
+      tauri.currentSelection = held;
+      const seen: Selection[] = [];
+      gateway.onSelection((selection) => seen.push(selection));
+      await flush();
+      expect(seen).toEqual([]);
+    },
+  );
 
   it.each([
     ['an Error', new Error('host is busy'), 'host is busy'],
@@ -193,12 +168,15 @@ describe('TauriReadAloudGateway current selection', () => {
   it('ignores the held selection once a live selection event has arrived', async () => {
     const { tauri, gateway } = start();
     tauri.currentGate = Promise.withResolvers();
-    const live: Selection = { kind: 'ready', preview: 'live', charCount: 4 };
+    const live: Selection = { kind: 'ready', sentences: [{ text: 'live', startsParagraph: true }] };
     const seen: Selection[] = [];
     gateway.onSelection((selection) => seen.push(selection));
     await flush();
     tauri.emit(SELECTION_EVENT, live);
-    tauri.currentGate.resolve({ kind: 'ready', preview: 'stale', charCount: 5 });
+    tauri.currentGate.resolve({
+      kind: 'ready',
+      sentences: [{ text: 'stale', startsParagraph: true }],
+    });
     await flush();
     expect(seen).toEqual([live]);
   });
@@ -209,9 +187,12 @@ describe('TauriReadAloudGateway current selection', () => {
     const seen: Selection[] = [];
     gateway.onSelection((selection) => seen.push(selection));
     await flush();
-    tauri.currentGate.resolve({ kind: 'ready', preview: 'held', charCount: 4 });
+    tauri.currentGate.resolve({
+      kind: 'ready',
+      sentences: [{ text: 'held', startsParagraph: true }],
+    });
     await flush();
-    expect(seen).toEqual([{ kind: 'ready', preview: 'held', charCount: 4 }]);
+    expect(seen).toEqual([{ kind: 'ready', sentences: [{ text: 'held', startsParagraph: true }] }]);
   });
 
   it('never asks for the held selection when listening fails', async () => {
@@ -226,102 +207,5 @@ describe('TauriReadAloudGateway current selection', () => {
     const { tauri, gateway } = start();
     gateway.onStatus(() => undefined);
     expect(tauri.invocations).toEqual([]);
-  });
-});
-
-describe('TauriReadAloudGateway events', () => {
-  it('listens to the selection and status events', () => {
-    const { tauri, gateway } = start();
-    gateway.onSelection(() => undefined);
-    gateway.onStatus(() => undefined);
-    expect([...tauri.handlers.keys()].sort((a, b) => a.localeCompare(b))).toEqual(
-      [SELECTION_EVENT, STATUS_EVENT].sort((a, b) => a.localeCompare(b)),
-    );
-    expect(SELECTION_EVENT).toBe('read-aloud:selection');
-    expect(STATUS_EVENT).toBe('read-aloud:status');
-  });
-
-  it.each<Selection>([
-    { kind: 'ready', preview: 'hello', charCount: 5 },
-    { kind: 'ready', preview: '', charCount: 0 },
-    { kind: 'failed', message: 'nothing' },
-  ])('passes a valid selection %j through', (payload) => {
-    const { tauri, gateway } = start();
-    const seen: Selection[] = [];
-    gateway.onSelection((selection) => seen.push(selection));
-    tauri.emit(SELECTION_EVENT, payload);
-    expect(seen).toEqual([payload]);
-  });
-
-  it.each<ReadingStatus>([
-    { kind: 'reading', mood: 'mad' },
-    { kind: 'finished' },
-    { kind: 'stopped' },
-    { kind: 'failed', message: 'boom' },
-  ])('passes a valid status %j through', (payload) => {
-    const { tauri, gateway } = start();
-    const seen: ReadingStatus[] = [];
-    gateway.onStatus((status) => seen.push(status));
-    tauri.emit(STATUS_EVENT, payload);
-    expect(seen).toEqual([payload]);
-  });
-
-  it.each<unknown>([
-    null,
-    'ready',
-    {},
-    { kind: 'waiting' },
-    { kind: 'ready', preview: 'x' },
-    { kind: 'ready', preview: 'x', charCount: -1 },
-    { kind: 'ready', preview: 'x', charCount: 1.5 },
-    { kind: 'ready', preview: 3, charCount: 1 },
-    { kind: 'failed' },
-  ])('turns the invalid selection %j into a failure', (payload) => {
-    const { tauri, gateway } = start();
-    const seen: Selection[] = [];
-    gateway.onSelection((selection) => seen.push(selection));
-    tauri.emit(SELECTION_EVENT, payload);
-    expect(seen).toEqual([{ kind: 'failed', message: UNEXPECTED_MESSAGE }]);
-  });
-
-  it.each<unknown>([
-    undefined,
-    { kind: 'idle' },
-    { kind: 'reading' },
-    { kind: 'reading', mood: 'sad' },
-    { kind: 'reading', mood: 3 },
-    { kind: 'failed' },
-    { kind: 'failed', message: 4 },
-  ])('turns the invalid status %j into a failure', (payload) => {
-    const { tauri, gateway } = start();
-    const seen: ReadingStatus[] = [];
-    gateway.onStatus((status) => seen.push(status));
-    tauri.emit(STATUS_EVENT, payload);
-    expect(seen).toEqual([{ kind: 'failed', message: UNEXPECTED_MESSAGE }]);
-  });
-
-  it('words the unexpected-payload failure for people', () => {
-    expect(UNEXPECTED_MESSAGE).toBe('The app sent an update this window does not understand.');
-  });
-
-  it('reports a failed subscription with the error message', async () => {
-    const { tauri, gateway } = start();
-    tauri.listenFailure = new Error('events unavailable');
-    const selections: Selection[] = [];
-    const statuses: ReadingStatus[] = [];
-    gateway.onSelection((selection) => selections.push(selection));
-    gateway.onStatus((status) => statuses.push(status));
-    await flush();
-    expect(selections).toEqual([{ kind: 'failed', message: 'events unavailable' }]);
-    expect(statuses).toEqual([{ kind: 'failed', message: 'events unavailable' }]);
-  });
-
-  it('reports a plain string subscription failure as is', async () => {
-    const { tauri, gateway } = start();
-    tauri.listenFailure = 'denied';
-    const seen: Selection[] = [];
-    gateway.onSelection((selection) => seen.push(selection));
-    await flush();
-    expect(seen).toEqual([{ kind: 'failed', message: 'denied' }]);
   });
 });

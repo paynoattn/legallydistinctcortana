@@ -28,6 +28,15 @@ pub enum TextError {
     },
 }
 
+/// One piece of a [`ReadingText`] as it is spoken.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Sentence {
+    /// The words of the sentence, trimmed.
+    pub text: String,
+    /// Whether it opens a paragraph: it is the first sentence, or follows a line break.
+    pub starts_paragraph: bool,
+}
+
 /// Trimmed text of 1 to [`MAX_READING_CHARS`] characters, ready to be read aloud.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadingText(String);
@@ -82,18 +91,38 @@ impl ReadingText {
     /// so the first sentence can be spoken while the rest is still being synthesized.
     #[must_use]
     pub fn sentences(&self) -> Vec<String> {
+        self.split()
+            .into_iter()
+            .map(|sentence| sentence.text)
+            .collect()
+    }
+
+    /// Whether `sentence` has anything to say: a letter or a digit. A Markdown table rule
+    /// such as `| --- | --- |` does not, and voice servers fail on text that gives no audio.
+    #[must_use]
+    pub fn is_speakable(sentence: &str) -> bool {
+        sentence.chars().any(char::is_alphanumeric)
+    }
+
+    /// The same pieces as [`Self::sentences`], each marked with whether it opens a paragraph.
+    #[must_use]
+    pub fn split(&self) -> Vec<Sentence> {
         let mut sentences = Vec::new();
         let mut current = String::new();
+        let mut after_break = true;
         let mut chars = self.0.chars().peekable();
         while let Some(c) = chars.next() {
             if c != '\n' {
                 current.push(c);
             }
             if ends_sentence(c, &mut chars) {
-                flush(&mut sentences, &mut current);
+                after_break = flush(&mut sentences, &mut current, after_break);
+            }
+            if c == '\n' {
+                after_break = true;
             }
         }
-        flush(&mut sentences, &mut current);
+        flush(&mut sentences, &mut current, after_break);
         sentences.into_iter().flat_map(split_long).collect()
     }
 }
@@ -103,21 +132,43 @@ fn ends_sentence(c: char, rest: &mut Peekable<Chars<'_>>) -> bool {
     c == '\n' || (terminator && rest.peek().is_none_or(|next| next.is_whitespace()))
 }
 
-fn flush(sentences: &mut Vec<String>, current: &mut String) {
+/// Pushes the sentence in `current`, if any. Returns whether the next one still opens a
+/// paragraph: true only when nothing was pushed and this one would have.
+fn flush(sentences: &mut Vec<Sentence>, current: &mut String, starts_paragraph: bool) -> bool {
     let sentence = mem::take(current);
     let trimmed = sentence.trim();
-    if !trimmed.is_empty() {
-        sentences.push(trimmed.to_owned());
+    if trimmed.is_empty() {
+        return starts_paragraph;
     }
+    sentences.push(Sentence {
+        text: trimmed.to_owned(),
+        starts_paragraph,
+    });
+    false
 }
 
-fn split_long(sentence: String) -> Vec<String> {
-    if sentence.chars().count() <= MAX_SENTENCE_CHARS {
-        return vec![sentence];
+fn split_long(sentence: Sentence) -> Vec<Sentence> {
+    let Sentence {
+        text,
+        starts_paragraph,
+    } = sentence;
+    wrap(text)
+        .into_iter()
+        .enumerate()
+        .map(|(index, words)| Sentence {
+            text: words,
+            starts_paragraph: starts_paragraph && index == 0,
+        })
+        .collect()
+}
+
+fn wrap(text: String) -> Vec<String> {
+    if text.chars().count() <= MAX_SENTENCE_CHARS {
+        return vec![text];
     }
     let mut pieces = Vec::new();
     let mut piece = String::new();
-    for word in sentence.split_whitespace() {
+    for word in text.split_whitespace() {
         let needed = piece.chars().count() + 1 + word.chars().count();
         if !piece.is_empty() && needed > MAX_SENTENCE_CHARS {
             pieces.push(mem::take(&mut piece));
@@ -181,6 +232,17 @@ mod tests {
     }
 
     #[test]
+    fn only_text_with_a_letter_or_digit_is_speakable() {
+        let speakable =
+            ["Hi.", "**1.**", "é", "| --- | --- |", "- * .", ""].map(ReadingText::is_speakable);
+        assert_eq!(
+            speakable,
+            [true, true, true, false, false, false],
+            "{speakable:?}"
+        );
+    }
+
+    #[test]
     fn error_messages_are_readable() {
         assert_eq!(TextError::Empty.to_string(), "there is no text to read");
         assert_eq!(
@@ -241,6 +303,49 @@ mod tests {
     fn a_sentence_exactly_at_the_limit_is_not_split() {
         let exact = "a".repeat(MAX_SENTENCE_CHARS);
         assert_eq!(sentences(&exact), [exact]);
+    }
+
+    fn paragraph_starts(raw: &str) -> Vec<(String, bool)> {
+        ReadingText::parse(raw)
+            .unwrap()
+            .split()
+            .into_iter()
+            .map(|sentence| (sentence.text, sentence.starts_paragraph))
+            .collect()
+    }
+
+    #[test]
+    fn the_first_sentence_and_those_after_a_line_break_open_paragraphs() {
+        assert_eq!(
+            paragraph_starts("Good morning.\nTwo emails need you. Lunch is at noon."),
+            [
+                ("Good morning.".to_owned(), true),
+                ("Two emails need you.".to_owned(), true),
+                ("Lunch is at noon.".to_owned(), false),
+            ]
+        );
+    }
+
+    #[test]
+    fn blank_lines_and_carriage_returns_open_one_paragraph() {
+        assert_eq!(
+            paragraph_starts("Title\r\n\r\nBody. More"),
+            [
+                ("Title".to_owned(), true),
+                ("Body.".to_owned(), true),
+                ("More".to_owned(), false),
+            ]
+        );
+    }
+
+    #[test]
+    fn only_the_first_piece_of_a_long_sentence_opens_its_paragraph() {
+        let first = "a".repeat(200);
+        let second = "b".repeat(200);
+        assert_eq!(
+            paragraph_starts(&format!("Hi.\n{first} {second}")),
+            [("Hi.".to_owned(), true), (first, true), (second, false)]
+        );
     }
 
     #[test]

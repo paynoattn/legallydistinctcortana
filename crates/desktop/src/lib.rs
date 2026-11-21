@@ -61,7 +61,6 @@ pub fn run() -> Result<(), tauri::Error> {
         ])
         .setup(setup)
         .on_window_event(|window, event| {
-            read_aloud::on_window_event(window, event);
             windows::on_window_event(window, event);
         })
         .run(tauri::generate_context!())

@@ -21,9 +21,9 @@ pub use push_to_talk::{DictationHost, PushToTalk};
 pub use readings::Readings;
 pub use service::{
     PREVIEW_CHARS, ReadAloudError, ReadAloudService, ReadOutcome, ReadingTicket, SelectionPreview,
-    ShortcutOutcome,
+    SentenceTiming,
 };
 pub use speech_domain::{
-    ConnectionKind, ConnectionStatus, Fix, OverlayError, OverlayEvent, OverlayState, Stage, Voice,
-    VoiceChoice,
+    ConnectionKind, ConnectionStatus, Fix, OverlayError, OverlayEvent, OverlayState, Sentence,
+    Stage, Voice, VoiceChoice,
 };

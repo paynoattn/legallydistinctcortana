@@ -69,6 +69,23 @@ pub fn corner_origin(window: Size, area: Rect, margin: u32) -> Point {
     }
 }
 
+/// Top-left position for a window of `window` size centred in `area`.
+///
+/// A window wider or taller than the area keeps its top-left corner inside the area.
+#[must_use]
+pub fn centred_origin(window: Size, area: Rect) -> Point {
+    Point {
+        x: centre(window.width, Span::new(area.origin.x, area.size.width)),
+        y: centre(window.height, Span::new(area.origin.y, area.size.height)),
+    }
+}
+
+fn centre(length: u32, span: Span) -> i32 {
+    let Span { start, end } = span;
+    let preferred = start + (end - start - i64::from(length)) / 2;
+    i32::try_from(preferred.max(start)).unwrap_or(i32::MAX)
+}
+
 fn far_edge(length: u32, span: Span, margin: u32) -> i32 {
     let Span { start, end } = span;
     let preferred = end - i64::from(margin) - i64::from(length);
@@ -218,5 +235,36 @@ mod tests {
             popup_origin(Point { x: 50, y: 50 }, POPUP, tiny),
             Point { x: 10, y: 10 }
         );
+    }
+
+    #[test]
+    fn a_window_is_centred_in_the_area() {
+        let second_monitor = Rect {
+            origin: Point { x: 1920, y: -100 },
+            size: Size {
+                width: 2560,
+                height: 1400,
+            },
+        };
+        let reader = Size {
+            width: 1290,
+            height: 991,
+        };
+        assert_eq!(
+            centred_origin(reader, second_monitor),
+            Point { x: 2555, y: 104 }
+        );
+    }
+
+    #[test]
+    fn a_window_larger_than_the_area_keeps_its_top_left_inside() {
+        let tiny = Rect {
+            origin: Point { x: 10, y: 20 },
+            size: Size {
+                width: 100,
+                height: 100,
+            },
+        };
+        assert_eq!(centred_origin(POPUP, tiny), Point { x: 10, y: 20 });
     }
 }

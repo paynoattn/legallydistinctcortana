@@ -1,5 +1,7 @@
 //! What the read-aloud and dictation use cases need from the outside world.
 
+use std::time::Duration;
+
 use speech_domain::{AudioClip, Voice, VoiceChoice};
 use thiserror::Error;
 
@@ -117,12 +119,13 @@ pub trait SpeechSynthesizer: Send + Sync {
 
 /// Plays audio on the user's speakers, in the order it is queued.
 pub trait AudioOutput: Send + Sync {
-    /// Queues `clip` after anything already queued and returns without waiting.
+    /// Queues `clip` after anything already queued and returns without waiting. Returns how
+    /// much audio is queued ahead of it, so how long until it starts playing.
     ///
     /// # Errors
     ///
     /// [`PlaybackError`] if no output device can be opened.
-    fn enqueue(&self, clip: AudioClip) -> Result<(), PlaybackError>;
+    fn enqueue(&self, clip: AudioClip) -> Result<Duration, PlaybackError>;
 
     /// Blocks until everything queued has played, or `cancel` is set.
     fn wait_until_idle(&self, cancel: &CancelFlag);

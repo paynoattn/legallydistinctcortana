@@ -152,6 +152,15 @@ impl AudioClip {
         }
     }
 
+    /// Played `speed_per_mille / 1000` times as fast at the same pitch (WSOLA).
+    #[must_use]
+    pub fn at_tempo(&self, speed_per_mille: u32) -> Self {
+        Self {
+            sample_rate: self.sample_rate,
+            samples: crate::tempo::change_tempo(&self.samples, self.sample_rate, speed_per_mille),
+        }
+    }
+
     /// Louder or quieter by `decibels`, clipped to `-1.0..=1.0`.
     #[must_use]
     pub fn with_gain(&self, decibels: i8) -> Self {
@@ -341,6 +350,13 @@ mod tests {
         assert_eq!(source.sped_up(2_000).samples().len(), 500);
         assert_eq!(source.sped_up(500).samples().len(), 2_000);
         assert_eq!(source.sped_up(1_000).sample_rate(), 1_000);
+    }
+
+    #[test]
+    fn a_tempo_change_keeps_the_sample_rate_and_scales_the_length() {
+        let source = clip(1_000, &[0.0; 1_000]);
+        assert_eq!(source.at_tempo(2_000).samples().len(), 500, "twice as fast");
+        assert_eq!(source.at_tempo(500).sample_rate(), 1_000, "rate unchanged");
     }
 
     #[test]
